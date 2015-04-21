@@ -1,0 +1,308 @@
+#!/usr/bin/perl -w
+#
+# A.Gaponenko, 2015
+#
+
+use autodie;
+use Getopt::Long;
+use File::Basename;
+use File::Copy;
+use English qw( -no_match_vars ) ; # Avoids regex performance penalty
+
+use Data::Dumper; # for debugging
+
+#================================================================
+sub usage() {
+    my $self = basename($0);
+    return <<EOF
+Usage: 
+	$self \\
+	 --description=<string> --config-version=<string> \\
+         { --inputs=<list-file-name> --merge-factor=<int> |\\
+	   --run-number=<int> --first-subrun=<int> \\
+	   --events-per-job=<int> --njobs=<int> }\\
+	 [--user=<string>] \\
+	 [--auxinput=[numFiles:]<fclVarName>:<filelist>] \\
+	 [--verbose] [--help] \\
+	 template-fcl-file
+
+That will write --njobs fcl files to the current directory.  File
+names will be constructed using --description, --config-version, and
+other pieces of information according to the Mu2e convention
+http://mu2e.fnal.gov/atwork/computing/tapeUpload.shtml
+Note that the name of each file in the Mu2e data handling system must
+be unique.
+
+The --auxinput option sets the given fcl file variable so that it
+points to the files in the given filelist.  If numFiles is specified,
+only the given number of randomly selected files from the list are
+used, rather than the complete list.  The --fclinput option can be
+repeated several times, the effect is cumulative.  If fclVarName
+starts with the '\@' sign, it will generate a BEGIN_PROLOG/END_PROLOG
+block with a fclVarName definition, which should be referred to using
+the \@local::fclVarName syntax in the template fcl file.  If the
+variable name does not start with the '\@' sign, an assignment to that
+variable will be appended to the user fcl file.
+
+If --user is not specified, the current username will be used.
+
+The square brackets [] above denote optional settings, and
+{alternative1|alternative2} constructs denote mutually exclusive
+alternatives.  All option names may be abbreviates as long as this is
+unambiguous.  (For example, '--verbose' and '--verb' mean the same
+thing.)
+
+EOF
+}
+
+#================================================================
+# constant strings used in more than one place
+
+use constant fclkey_SeedService => 'services.user.SeedService';
+use constant fclkey_TFileServiceFN => 'services.TFileService.fileName';
+use constant fclkey_outModFMT => 'outputs.%s.fileName';
+
+#================================================================
+sub checkParameterValues($$) {
+    my ($opt, $list) = @_;
+    foreach my $a (@$list) {
+	#print "checking parameter $a\n";
+	#print "got value", $$opt{$a}, "\n";
+	my $val = $$opt{$a};
+	die "Invalid value of parameter $a = '$val'"
+	    unless $val =~ /^\w+$/;
+    }
+}
+
+sub makeNtsFileName($$$$) {
+    my ($template, $newowner, $newconfig, $newseq) = @_;
+
+    # data_tier.owner.description.configuration.sequencer.file_format
+    my ($tier, $owner, $description, $conf, $seq, $ext, $extra) = split(/\./, $template);
+
+    die "Error parsing histo file name $template: too many fields\n" if defined $extra;
+    die "Error parsing histo file name $template: too few fields\n" if not defined $ext;
+    die "Error parsing histo file name $template: expect extension .root\n" if $ext ne 'root';
+    die "Error parsing histo file name $template: expect data tier nts\n" if $tier ne 'nts';
+
+    return "nts.$newowner.$description.$newconfig.$newseq.root";
+}
+
+sub makeArtFileName($$$$) {
+    my ($template, $newowner, $newconfig, $newseq) = @_;
+
+    # data_tier.owner.description.configuration.sequencer.file_format
+    my ($tier, $owner, $description, $conf, $seq, $ext, $extra) = split(/\./, $template);
+
+    die "Error parsing art file name $template: too many fields\n" if defined $extra;
+    die "Error parsing art file name $template: too few fields\n" if not defined $ext;
+    die "Error parsing art file name $template: expect extension .art\n" if $ext ne 'art';
+
+    die "Error parsing art file name $template: unknown data tier $tier\n"
+	unless grep( /^$tier$/, ('sim', 'mix', 'dig', 'mcs') );
+
+    return "$tier.$newowner.$description.$newconfig.$newseq.root";
+}
+
+#================================================================
+sub addEventID($$$$) {
+    my ($fh, $run, $subrun, $maxEvents) = @_;
+    print $fh "source.firstRun: $run\n";
+    print $fh "source.firstSubRun: $subrun\n";
+    print $fh "source.maxEvents: $maxEvents\n";
+}
+
+sub addRandomSeed($) {
+    my ($fh) = @_;
+
+    my $maxUniqueEngines = 20;
+
+    # art's RandomNumberGenerator_service restrict seeds to
+    # not exceed 900000000.   Not clear if zero seed is OK
+    # so we'll use a non-negative number up to the max.
+    # Should leave space for SeedService to increment, thus
+    # need to account for maxUniqueEngines.
+    my $seedlimit= 900000000 - $maxUniqueEngines + 1;
+
+    my $seed=0;
+    my $count = 0;
+    open(my $rndfh, '<', '/dev/urandom') or die "Error opening input file /dev/urandom: $!\n";
+    do {
+	my $recsize = 4; # bytes
+	my $binseed = 0;
+	read($rndfh, $binseed, $recsize) == $recsize or die "Error reading from /dev/urandom: $!\n"; 
+	my $inseed = unpack '%32l', $binseed;
+	$seed = $inseed % $seedlimit;
+    } until $seed;
+
+    print $fh fclkey_SeedService . ".policy:  autoIncrement\n";
+    print $fh fclkey_SeedService . ".maxUniqueEngines: $maxUniqueEngines\n";
+    print $fh fclkey_SeedService . ".baseSeed: $seed\n";
+}
+
+#================================================================
+my $defaultUser = getpwuid($EFFECTIVE_USER_ID);
+my %opt = ('user' =>  $defaultUser, 'verbose' => 0, 'help' => 0);
+
+# Process command line opts.
+GetOptions(\%opt,
+	   'description=s',
+	   'config-version=s',
+	   'inputs=s',
+	   'merge-factor=i',
+	   'run-number=i',
+	   'first-subrun=i',
+	   'events-per-job=i',
+	   'njobs=i',
+	   'user=s',
+	   'help',
+	   'verbose',
+    ) 
+    or die "\nError processing command line options.\n";
+
+if($opt{'help'}) {
+    print usage();
+    exit 0;
+}
+
+my $verbose = $opt{'verbose'};
+print "Final set of options:\n", Dumper( \%opt ), "\n"
+    if($verbose);
+
+die "A single non-option arg must specify a template file. Try the --help option.\n"
+    unless $#ARGV == 0;
+
+my $templatefile = $ARGV[0];
+
+#----------------------------------------------------------------
+# Set up the environment and extract info from the input fcl file
+$ENV{'FHICL_FILE_PATH'} = 
+    defined($ENV{'FHICL_FILE_PATH'}) ?
+    ".:$ENV{'FHICL_FILE_PATH'}"
+    : ".";
+
+my $srctype = `fhicl-getpar --string source.module_type $templatefile`;
+if($?) {
+    die "Error running fhicl-getpar to determine source.module_type.\n";
+}
+chomp $srctype;
+print "Got srctype = $srctype\n" if $verbose;
+
+# optional TFileService output
+my $ntscmd = "fhicl-getpar --string ".fclkey_TFileServiceFN." $templatefile 2>/dev/null";
+my $ntsout = `$ntscmd`;
+chomp $ntsout;
+print "Got ntsout = $ntsout\n" if $verbose;
+#print "new histo name = ", makeNtsFileName($ntsout, 'newown', 'v3', 'newseq'), "\n";
+
+# optional .art output files
+my @outmods = `fhicl-getpar --keys outputs $templatefile 2>/dev/null`; 
+chomp @outmods;
+print "Got outmods = @outmods\n" if $verbose;
+my %fwout;
+foreach my $mod (@outmods) {
+    my $cmd = sprintf "fhicl-getpar --string ".fclkey_outModFMT." $templatefile 2>/dev/null", $mod;
+    my $outfile = `$cmd`;
+    if($?) {
+	die "Error: no fileName for outputs.$mod\n";
+    }
+    chomp $outfile;;
+    $fwout{$mod} = $outfile;
+    print "$mod => $outfile\n" if $verbose;
+    #print "new art name = ", makeArtFileName($outfile, 'newown', 'v3', 'newseq'), "\n";
+}
+
+# Determine whether SeedService is present: should we generate random seeds?
+my $seedcmd = "fhicl-getpar --keys ".fclkey_SeedService." $templatefile 2>/dev/null";
+my @seedout = `$seedcmd`; chomp @seedout;
+my $needRandomSeeds = $? ? 0 : 1;
+print "needRandomSeeds = $needRandomSeeds because got @seedout\n" if $verbose;
+
+
+# FIXME: take metadata from cmdline of this script and add it to the output fcl
+# ALSO, produce a generic json file for the fcl set.
+# include 'phy' or 'usr' in the metadata.
+#### check that metadata that will be required  by the worker node process is present
+my %metas = (
+    'mc.generator_type' => 'string',
+    'mc.simulation_stage' => 'int',
+    'mc.primary_particle' => 'string'
+    );
+
+foreach my $metakey (keys %metas) {
+    my $metaval = `fhicl-getpar --$metas{$metakey}  mu2emetadata.$metakey $templatefile 2>&1`;
+    if($?) {
+	die "Error: $templatefile must define mu2emetadata.$metakey.  Got:\n$metaval\n";
+    }
+    chomp $metaval;
+    print "Got $metakey => $metaval\n" if $verbose;
+}
+
+#----------------------------------------------------------------
+# These arguments must always be provided
+foreach my $k ('description', 'config-version') {
+    (defined $opt{$k} and $opt{$k} ne '' ) or die "Error: --$k must be specified and nonempty.  Try the --help option.\n";
+}
+
+checkParameterValues(\%opt, ['user', 'config-version', 'description' ]);
+
+my $user = $opt{'user'};
+my $ver = $opt{'config-version'};
+
+# The set of required args depends on the fcl: e.g s1 needs run
+# and subrun numbers but s2 does not, and can not use them.
+
+my @emptySourceArgs = ('run-number', 'first-subrun', 'events-per-job', 'njobs');
+my @fileInputsArgs = ('inputs', 'merge-factor');
+
+if($srctype eq 'EmptyEvent') {
+
+    foreach my $k (@emptySourceArgs) {
+	(defined $opt{$k} and $opt{$k} ne '' )
+	    or die "Error: --$k must be specified and nonempty for EmptySource fcl files.  Try the --help option.\n";
+    }
+
+    foreach my $k (@fileInputsArgs) {
+	die "Error: --$k is not compatible with EmtpySource fcl file.  Try the --help option.\n"
+	    if(defined $opt{$k});
+    }
+
+    # cnf.andr.beam_g4s1.1004a.00001399_000997.fcl
+
+    for(my $i = 0; $i < $opt{'njobs'}; ++$i) {
+	my $subrun = $i + $opt{'first-subrun'};
+
+	my $run = $opt{'run-number'};
+
+	my $seq = sprintf "%08i_%06i", $run, $subrun;
+	my $fn =  "cnf.$user.$opt{description}.$ver.$seq.fcl";
+	
+	open( my $fh,  '>', $fn ) or die "error opening output file $fn: $!\n";
+	# print "$fn\n";
+	copy($templatefile, $fh) or die "error copying $templatefile to $fn: $!\n";
+
+	print $fh "\n#----------------------------------------------------------------\n";
+	print $fh "# Code added by generate_fcl:\n";
+
+	my $histval = makeNtsFileName($ntsout, $user, $ver, $seq);
+	print $fh  fclkey_TFileServiceFN .": $histval\n" ;
+
+	foreach my $mod (@outmods) {
+	    my $artkey = sprintf fclkey_outModFMT, $mod;
+	    my $artval = makeArtFileName($fwout{$mod}, $user, $ver, $seq);
+	    print $fh  "$artkey : $artval\n" ;
+	}
+
+	addRandomSeed($fh) if $needRandomSeeds;
+	addEventID($fh, $run, $subrun, $opt{'events-per-job'});
+    }
+
+}
+elsif($srctype eq 'RootInput') {
+    die "RootInput mode is not implemented";
+}
+else {
+    die "Error: unknown source.module_type = $srctype\n";
+}
+
+#================================================================
