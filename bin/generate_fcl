@@ -62,6 +62,9 @@ use constant fclkey_SeedService => 'services.user.SeedService';
 use constant fclkey_TFileServiceFN => 'services.TFileService.fileName';
 use constant fclkey_outModFMT => 'outputs.%s.fileName';
 
+use constant outputfile_owner => 'MU2EGRIDDSOWNER';
+use constant outputfile_conf => 'MU2EGRIDDSCONF';
+
 #================================================================
 sub checkParameterValues($$) {
     my ($opt, $list) = @_;
@@ -77,8 +80,8 @@ sub checkParameterValues($$) {
     }
 }
 
-sub makeNtsFileName($$$$) {
-    my ($template, $newowner, $newconfig, $newseq) = @_;
+sub makeNtsFileName($$) {
+    my ($template, $newseq) = @_;
 
     # data_tier.owner.description.configuration.sequencer.file_format
     my ($tier, $owner, $description, $conf, $seq, $ext, $extra) = split(/\./, $template);
@@ -88,11 +91,11 @@ sub makeNtsFileName($$$$) {
     die "Error parsing histo file name $template: expect extension .root\n" if $ext ne 'root';
     die "Error parsing histo file name $template: expect data tier nts\n" if $tier ne 'nts';
 
-    return "nts.$newowner.$description.$newconfig.$newseq.root";
+    return join('.', ('nts', outputfile_owner, $description, outputfile_conf, $newseq, 'root') );
 }
 
-sub makeArtFileName($$$$) {
-    my ($template, $newowner, $newconfig, $newseq) = @_;
+sub makeArtFileName($$) {
+    my ($template, $newseq) = @_;
 
     # data_tier.owner.description.configuration.sequencer.file_format
     my ($tier, $owner, $description, $conf, $seq, $ext, $extra) = split(/\./, $template);
@@ -104,7 +107,7 @@ sub makeArtFileName($$$$) {
     die "Error parsing art file name $template: unknown data tier $tier\n"
 	unless grep( /^$tier$/, ('sim', 'mix', 'dig', 'mcs') );
 
-    return "$tier.$newowner.$description.$newconfig.$newseq.root";
+    return join('.', ($tier, outputfile_owner, $description, outputfile_conf, $newseq, 'art') );
 }
 
 #================================================================
@@ -282,12 +285,12 @@ if($srctype eq 'EmptyEvent') {
 	print $fh "mu2emetadata.mc.simulation_stage: $simulation_stage\n";
 	print $fh "mu2emetadata.mc.primary_particle: $primary_particle\n";
 
-	my $histval = makeNtsFileName($ntsout, $user, $ver, $seq);
+	my $histval = makeNtsFileName($ntsout, $seq);
 	print $fh  fclkey_TFileServiceFN .": \"$histval\"\n" ;
 
 	foreach my $mod (@outmods) {
 	    my $artkey = sprintf fclkey_outModFMT, $mod;
-	    my $artval = makeArtFileName($fwout{$mod}, $user, $ver, $seq);
+	    my $artval = makeArtFileName($fwout{$mod}, $seq);
 	    print $fh  "$artkey : \"$artval\"\n" ;
 	}
 
