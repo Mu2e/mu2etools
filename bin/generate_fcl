@@ -68,6 +68,9 @@ sub checkParameterValues($$) {
     foreach my $a (@$list) {
 	#print "checking parameter $a\n";
 	#print "got value", $$opt{$a}, "\n";
+
+	die "Error: parameter $a must be specified\n" unless defined $$opt{$a};
+
 	my $val = $$opt{$a};
 	die "Invalid value of parameter $a = '$val'"
 	    unless $val =~ /^\w+$/;
@@ -148,6 +151,9 @@ my %opt = ('user' =>  $defaultUser, 'verbose' => 0, 'help' => 0);
 GetOptions(\%opt,
 	   'description=s',
 	   'config-version=s',
+	   'generator-type=s',
+	   'simulation-stage=i',
+	   'primary-particle=s',
 	   'inputs=s',
 	   'merge-factor=i',
 	   'run-number=i',
@@ -218,36 +224,24 @@ my @seedout = `$seedcmd`; chomp @seedout;
 my $needRandomSeeds = $? ? 0 : 1;
 print "needRandomSeeds = $needRandomSeeds because got @seedout\n" if $verbose;
 
-
-# FIXME: take metadata from cmdline of this script and add it to the output fcl
-# ALSO, produce a generic json file for the fcl set.
-# include 'phy' or 'usr' in the metadata.
-#### check that metadata that will be required  by the worker node process is present
-my %metas = (
-    'mc.generator_type' => 'string',
-    'mc.simulation_stage' => 'int',
-    'mc.primary_particle' => 'string'
-    );
-
-foreach my $metakey (keys %metas) {
-    my $metaval = `fhicl-getpar --$metas{$metakey}  mu2emetadata.$metakey $templatefile 2>&1`;
-    if($?) {
-	die "Error: $templatefile must define mu2emetadata.$metakey.  Got:\n$metaval\n";
-    }
-    chomp $metaval;
-    print "Got $metakey => $metaval\n" if $verbose;
-}
-
 #----------------------------------------------------------------
 # These arguments must always be provided
-foreach my $k ('description', 'config-version') {
-    (defined $opt{$k} and $opt{$k} ne '' ) or die "Error: --$k must be specified and nonempty.  Try the --help option.\n";
-}
 
-checkParameterValues(\%opt, ['user', 'config-version', 'description' ]);
+checkParameterValues(\%opt,
+		     ['user',
+		      'config-version',
+		      'description',
+		      'generator-type',
+		      'simulation-stage',
+		      'primary-particle'
+		     ]);
 
 my $user = $opt{'user'};
 my $ver = $opt{'config-version'};
+
+my $generator_type = $opt{'generator-type'};
+my $simulation_stage = $opt{'simulation-stage'};
+my $primary_particle = $opt{'primary-particle'};
 
 # The set of required args depends on the fcl: e.g s1 needs run
 # and subrun numbers but s2 does not, and can not use them.
@@ -284,13 +278,17 @@ if($srctype eq 'EmptyEvent') {
 	print $fh "\n#----------------------------------------------------------------\n";
 	print $fh "# Code added by generate_fcl:\n";
 
+	print $fh "mu2emetadata.mc.generator_type: $generator_type\n";
+	print $fh "mu2emetadata.mc.simulation_stage: $simulation_stage\n";
+	print $fh "mu2emetadata.mc.primary_particle: $primary_particle\n";
+
 	my $histval = makeNtsFileName($ntsout, $user, $ver, $seq);
-	print $fh  fclkey_TFileServiceFN .": $histval\n" ;
+	print $fh  fclkey_TFileServiceFN .": \"$histval\"\n" ;
 
 	foreach my $mod (@outmods) {
 	    my $artkey = sprintf fclkey_outModFMT, $mod;
 	    my $artval = makeArtFileName($fwout{$mod}, $user, $ver, $seq);
-	    print $fh  "$artkey : $artval\n" ;
+	    print $fh  "$artkey : \"$artval\"\n" ;
 	}
 
 	addRandomSeed($fh) if $needRandomSeeds;
@@ -304,5 +302,18 @@ elsif($srctype eq 'RootInput') {
 else {
     die "Error: unknown source.module_type = $srctype\n";
 }
+
+#================================================================
+# Produce a generic json file for upload of generated fcl files to SAM
+
+my $jsonfilename = "generic.$user.$opt{description}.$ver.json";
+open( my $json,  '>', $jsonfilename ) or die "error opening output file $jsonfilename: $!\n";
+print $json <<EOF
+{
+    "mc.generator_type": "$generator_type",
+    "mc.simulation_stage": $simulation_stage,
+    "mc.primary_particle": "$primary_particle"
+}
+EOF
 
 #================================================================
