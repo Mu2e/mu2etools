@@ -69,11 +69,7 @@ use constant outputfile_conf => 'MU2EGRIDDSCONF';
 sub checkParameterValues($$) {
     my ($opt, $list) = @_;
     foreach my $a (@$list) {
-	#print "checking parameter $a\n";
-	#print "got value", $$opt{$a}, "\n";
-
 	die "Error: parameter $a must be specified\n" unless defined $$opt{$a};
-
 	my $val = $$opt{$a};
 	die "Invalid value of parameter $a = '$val'"
 	    unless $val =~ /^\w+$/;
@@ -137,7 +133,7 @@ sub addRandomSeed($) {
 	my $recsize = 4; # bytes
 	my $binseed = 0;
 	read($rndfh, $binseed, $recsize) == $recsize or die "Error reading from /dev/urandom: $!\n"; 
-	my $inseed = unpack '%32l', $binseed;
+	my $inseed = unpack '%32L', $binseed;
 	$seed = $inseed % $seedlimit;
     } until $seed;
 
@@ -202,7 +198,6 @@ my $ntscmd = "fhicl-getpar --string ".fclkey_TFileServiceFN." $templatefile 2>/d
 my $ntsout = `$ntscmd`;
 chomp $ntsout;
 print "Got ntsout = $ntsout\n" if $verbose;
-#print "new histo name = ", makeNtsFileName($ntsout, 'newown', 'v3', 'newseq'), "\n";
 
 # optional .art output files
 my @outmods = `fhicl-getpar --keys outputs $templatefile 2>/dev/null`; 
@@ -218,7 +213,6 @@ foreach my $mod (@outmods) {
     chomp $outfile;;
     $fwout{$mod} = $outfile;
     print "$mod => $outfile\n" if $verbose;
-    #print "new art name = ", makeArtFileName($outfile, 'newown', 'v3', 'newseq'), "\n";
 }
 
 # Determine whether SeedService is present: should we generate random seeds?
@@ -263,8 +257,6 @@ if($srctype eq 'EmptyEvent') {
 	die "Error: --$k is not compatible with EmtpySource fcl file.  Try the --help option.\n"
 	    if(defined $opt{$k});
     }
-
-    # cnf.andr.beam_g4s1.1004a.00001399_000997.fcl
 
     for(my $i = 0; $i < $opt{'njobs'}; ++$i) {
 	my $subrun = $i + $opt{'first-subrun'};
