@@ -72,7 +72,7 @@ sub checkParameterValues($$) {
 	die "Error: parameter $a must be specified\n" unless defined $$opt{$a};
 	my $val = $$opt{$a};
 	die "Invalid value of parameter $a = '$val'"
-	    unless $val =~ /^\w+$/;
+	    unless $val =~ /^\w[-\w]*$/;
     }
 }
 
