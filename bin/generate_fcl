@@ -7,6 +7,7 @@ use autodie;
 use Getopt::Long;
 use File::Basename;
 use File::Copy;
+use File::Temp qw/tempfile/;
 use English qw( -no_match_vars ) ; # Avoids regex performance penalty
 
 use Data::Dumper; # for debugging
@@ -21,6 +22,7 @@ Usage:
          { --inputs=<list-file-name> --merge-factor=<int> |\\
 	   --run-number=<int> --first-subrun=<int> \\
 	   --events-per-job=<int> --njobs=<int> }\\
+	 [--old-seeds=<seeds-file-name>] \\
 	 [--user=<string>] \\
 	 [--auxinput=[numFiles:]<fclVarName>:<filelist>] \\
 	 [--verbose] [--help] \\
@@ -33,6 +35,12 @@ http://mu2e.fnal.gov/atwork/computing/tapeUpload.shtml
 Note that the name of each file in the Mu2e data handling system must
 be unique.
 
+The --old-seeds option points to a text file with a list of seeds that
+should not be used in the current generation.  It is required in case
+the fcl file defines services.user.SeedService.
+
+If --user is not specified, the current username will be used.
+
 The --auxinput option sets the given fcl file variable so that it
 points to the files in the given filelist.  If numFiles is specified,
 only the given number of randomly selected files from the list are
@@ -43,8 +51,6 @@ block with a fclVarName definition, which should be referred to using
 the \@local::fclVarName syntax in the template fcl file.  If the
 variable name does not start with the '\@' sign, an assignment to that
 variable will be appended to the user fcl file.
-
-If --user is not specified, the current username will be used.
 
 The square brackets [] above denote optional settings, and
 {alternative1|alternative2} constructs denote mutually exclusive
@@ -114,8 +120,8 @@ sub addEventID($$$$) {
     print $fh "source.maxEvents: $maxEvents\n";
 }
 
-sub addRandomSeed($) {
-    my ($fh) = @_;
+sub addRandomSeed($$) {
+    my ($fh, $usedSeeds) = @_;
     my $maxUniqueEngines = 20;
 
 
@@ -126,16 +132,22 @@ sub addRandomSeed($) {
     # need to account for maxUniqueEngines.
     my $seedlimit= 900000000 - $maxUniqueEngines + 1;
 
-    my $seed=0;
-    my $count = 0;
     open(my $rndfh, '<', '/dev/urandom') or die "Error opening input file /dev/urandom: $!\n";
-    do {
+
+    my $seed=0;
+    while(!$seed) {
 	my $recsize = 4; # bytes
 	my $binseed = 0;
 	read($rndfh, $binseed, $recsize) == $recsize or die "Error reading from /dev/urandom: $!\n";
 	my $inseed = unpack '%32L', $binseed;
 	$seed = $inseed % $seedlimit;
-    } until $seed;
+
+	if($$usedSeeds{$seed}) {
+	    print STDERR "Skipping old seed $seed\n";
+	    redo;
+	}
+    }
+    $$usedSeeds{$seed} = 1;
 
     print $fh fclkey_SeedService . ".policy:  autoIncrement\n";
     print $fh fclkey_SeedService . ".maxUniqueEngines: $maxUniqueEngines\n";
@@ -159,6 +171,7 @@ GetOptions(\%opt,
 	   'first-subrun=i',
 	   'events-per-job=i',
 	   'njobs=i',
+	   'old-seeds=s',
 	   'user=s',
 	   'help',
 	   'verbose',
@@ -220,6 +233,24 @@ my $seedcmd = "fhicl-getpar --keys ".fclkey_SeedService." $templatefile 2>/dev/n
 my @seedout = `$seedcmd`; chomp @seedout;
 my $needRandomSeeds = $? ? 0 : 1;
 print "needRandomSeeds = $needRandomSeeds because got @seedout\n" if $verbose;
+
+my %usedSeeds;
+if($needRandomSeeds) {
+    die "A list of random seeds from existing subruns of this dataset must be specified with --old-seeds.\n"
+	."Use an empty file for the initial run.\n"
+	unless defined $opt{'old-seeds'};
+
+    open(my $oldseeds, '<', $opt{'old-seeds'}) or die "Error opening input file $opt{'old-seeds'}: $!\n";
+    while(my $line = <$oldseeds>) {
+	chomp $line;
+	next if $line eq '';
+	die "Error: bad seed '$line'\n" unless $line =~ /^\d+$/;
+	$usedSeeds{0 + $line} = 1;
+    }
+}
+elsif(defined $opt{'old-seeds'}) {
+    die "Error: the --old-seeds option will not have any effect because fcl config does not use " . fclkey_SeedService . "\n";
+}
 
 #----------------------------------------------------------------
 # These arguments must always be provided
@@ -286,7 +317,7 @@ if($srctype eq 'EmptyEvent') {
 	    print $fh  "$artkey : \"$artval\"\n" ;
 	}
 
-	addRandomSeed($fh) if $needRandomSeeds;
+	addRandomSeed($fh, \%usedSeeds) if $needRandomSeeds;
 	addEventID($fh, $run, $subrun, $opt{'events-per-job'});
     }
 
@@ -310,5 +341,16 @@ print $json <<EOF
     "mc.primary_particle": "$primary_particle"
 }
 EOF
+    ;
+
+#================================================================
+# Dump a list of all previously used seeds: the inputs list plus those
+# we've generated in this invocation.  This file will be convenient to
+# have if we want to add more statistics.
+
+my ($outseedfh, $outseedfn) = tempfile("seeds.$user.$opt{description}.$ver.XXXX", SUFFIX => '.txt');
+for my $seed (sort {$a <=> $b} keys %usedSeeds) {
+    print $outseedfh $seed, "\n";
+}
 
 #================================================================
