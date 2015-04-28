@@ -294,7 +294,7 @@ if($srctype eq 'EmptyEvent') {
 
 	my $run = $opt{'run-number'};
 
-	my $seq = sprintf "%08i_%06i", $run, $subrun;
+	my $seq = sprintf "%06i_%08i", $run, $subrun;
 	my $fn =  "cnf.$dsowner.$opt{description}.$dsconf.$seq.fcl";
 	
 	open( my $fh,  '>', $fn ) or die "error opening output file $fn: $!\n";
