@@ -18,28 +18,29 @@ sub usage() {
     return <<EOF
 Usage: 
 	$self \\
-	 --description=<string> --config-version=<string> \\
+	 --description=<string> --dsconf=<string> \\
+	 [--dsowner=<string>] \\
          { --inputs=<list-file-name> --merge-factor=<int> |\\
 	   --run-number=<int> --first-subrun=<int> \\
 	   --events-per-job=<int> --njobs=<int> }\\
 	 [--old-seeds=<seeds-file-name>] \\
-	 [--user=<string>] \\
 	 [--auxinput=[numFiles:]<fclVarName>:<filelist>] \\
 	 [--verbose] [--help] \\
 	 template-fcl-file
 
 That will write --njobs fcl files to the current directory.  File
-names will be constructed using --description, --config-version, and
+names will be constructed using --description, --dsconf, and
 other pieces of information according to the Mu2e convention
 http://mu2e.fnal.gov/atwork/computing/tapeUpload.shtml
 Note that the name of each file in the Mu2e data handling system must
-be unique.
+be unique. If --dsowner is not specified, the current username
+will be used.
 
 The --old-seeds option points to a text file with a list of seeds that
 should not be used in the current generation.  It is required in case
-the fcl file defines services.user.SeedService.
-
-If --user is not specified, the current username will be used.
+the fcl file defines services.user.SeedService.  Normally this file
+will contain a list of seeds in already existing subruns of this
+dataset.  One can specify /dev/null for the initial generation.
 
 The --auxinput option sets the given fcl file variable so that it
 points to the files in the given filelist.  If numFiles is specified,
@@ -124,7 +125,6 @@ sub addRandomSeed($$) {
     my ($fh, $usedSeeds) = @_;
     my $maxUniqueEngines = 20;
 
-
     # art's RandomNumberGenerator_service restrict seeds to
     # not exceed 900000000.   Not clear if zero seed is OK
     # so we'll use a non-negative number up to the max.
@@ -156,12 +156,12 @@ sub addRandomSeed($$) {
 
 #================================================================
 my $defaultUser = getpwuid($EFFECTIVE_USER_ID);
-my %opt = ('user' =>  $defaultUser, 'verbose' => 0, 'help' => 0);
+my %opt = ('dsowner' =>  $defaultUser, 'verbose' => 0, 'help' => 0);
 
 # Process command line opts.
 GetOptions(\%opt,
 	   'description=s',
-	   'config-version=s',
+	   'dsconf=s',
 	   'generator-type=s',
 	   'simulation-stage=i',
 	   'primary-particle=s',
@@ -172,7 +172,7 @@ GetOptions(\%opt,
 	   'events-per-job=i',
 	   'njobs=i',
 	   'old-seeds=s',
-	   'user=s',
+	   'dsowner=s',
 	   'help',
 	   'verbose',
     ) 
@@ -256,16 +256,16 @@ elsif(defined $opt{'old-seeds'}) {
 # These arguments must always be provided
 
 checkParameterValues(\%opt,
-		     ['user',
-		      'config-version',
+		     ['dsowner',
+		      'dsconf',
 		      'description',
 		      'generator-type',
 		      'simulation-stage',
 		      'primary-particle'
 		     ]);
 
-my $user = $opt{'user'};
-my $ver = $opt{'config-version'};
+my $dsowner = $opt{'dsowner'};
+my $dsconf = $opt{'dsconf'};
 
 my $generator_type = $opt{'generator-type'};
 my $simulation_stage = $opt{'simulation-stage'};
@@ -295,7 +295,7 @@ if($srctype eq 'EmptyEvent') {
 	my $run = $opt{'run-number'};
 
 	my $seq = sprintf "%08i_%06i", $run, $subrun;
-	my $fn =  "cnf.$user.$opt{description}.$ver.$seq.fcl";
+	my $fn =  "cnf.$dsowner.$opt{description}.$dsconf.$seq.fcl";
 	
 	open( my $fh,  '>', $fn ) or die "error opening output file $fn: $!\n";
 	# print "$fn\n";
@@ -332,7 +332,7 @@ else {
 #================================================================
 # Produce a generic json file for upload of generated fcl files to SAM
 
-my $jsonfilename = "generic.$user.$opt{description}.$ver.json";
+my $jsonfilename = "generic.$dsowner.$opt{description}.$dsconf.json";
 open( my $json,  '>', $jsonfilename ) or die "error opening output file $jsonfilename: $!\n";
 print $json <<EOF
 {
@@ -348,7 +348,7 @@ EOF
 # we've generated in this invocation.  This file will be convenient to
 # have if we want to add more statistics.
 
-my ($outseedfh, $outseedfn) = tempfile("seeds.$user.$opt{description}.$ver.XXXX", SUFFIX => '.txt');
+my ($outseedfh, $outseedfn) = tempfile("seeds.$dsowner.$opt{description}.$dsconf.XXXX", SUFFIX => '.txt');
 for my $seed (sort {$a <=> $b} keys %usedSeeds) {
     print $outseedfh $seed, "\n";
 }
