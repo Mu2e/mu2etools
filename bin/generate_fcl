@@ -114,30 +114,28 @@ sub addEventID($$$$) {
     print $fh "source.maxEvents: $maxEvents\n";
 }
 
-sub addRandomSeed($$) {
-    my ($fh, $subrun) = @_;
+sub addRandomSeed($) {
+    my ($fh) = @_;
     my $maxUniqueEngines = 20;
 
-#random:
-#random:    # art's RandomNumberGenerator_service restrict seeds to
-#random:    # not exceed 900000000.   Not clear if zero seed is OK
-#random:    # so we'll use a non-negative number up to the max.
-#random:    # Should leave space for SeedService to increment, thus
-#random:    # need to account for maxUniqueEngines.
-#random:    my $seedlimit= 900000000 - $maxUniqueEngines + 1;
-#random:
-#random:    my $seed=0;
-#random:    my $count = 0;
-#random:    open(my $rndfh, '<', '/dev/urandom') or die "Error opening input file /dev/urandom: $!\n";
-#random:    do {
-#random:	my $recsize = 4; # bytes
-#random:	my $binseed = 0;
-#random:	read($rndfh, $binseed, $recsize) == $recsize or die "Error reading from /dev/urandom: $!\n";
-#random:	my $inseed = unpack '%32L', $binseed;
-#random:	$seed = $inseed % $seedlimit;
-#random:    } until $seed;
 
-    my $seed = $subrun;
+    # art's RandomNumberGenerator_service restrict seeds to
+    # not exceed 900000000.   Not clear if zero seed is OK
+    # so we'll use a non-negative number up to the max.
+    # Should leave space for SeedService to increment, thus
+    # need to account for maxUniqueEngines.
+    my $seedlimit= 900000000 - $maxUniqueEngines + 1;
+
+    my $seed=0;
+    my $count = 0;
+    open(my $rndfh, '<', '/dev/urandom') or die "Error opening input file /dev/urandom: $!\n";
+    do {
+	my $recsize = 4; # bytes
+	my $binseed = 0;
+	read($rndfh, $binseed, $recsize) == $recsize or die "Error reading from /dev/urandom: $!\n";
+	my $inseed = unpack '%32L', $binseed;
+	$seed = $inseed % $seedlimit;
+    } until $seed;
 
     print $fh fclkey_SeedService . ".policy:  autoIncrement\n";
     print $fh fclkey_SeedService . ".maxUniqueEngines: $maxUniqueEngines\n";
@@ -288,7 +286,7 @@ if($srctype eq 'EmptyEvent') {
 	    print $fh  "$artkey : \"$artval\"\n" ;
 	}
 
-	addRandomSeed($fh, $subrun) if $needRandomSeeds;
+	addRandomSeed($fh) if $needRandomSeeds;
 	addEventID($fh, $run, $subrun, $opt{'events-per-job'});
     }
 
