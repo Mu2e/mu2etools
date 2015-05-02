@@ -16,17 +16,17 @@ use Data::Dumper; # for debugging
 sub usage() {
     my $self = basename($0);
     return <<EOF
-Usage: 
-	$self \\
-	 --description=<string> --dsconf=<string> \\
-	 [--dsowner=<string>] \\
+Usage:
+        $self \\
+         --description=<string> --dsconf=<string> \\
+         [--dsowner=<string>] \\
          { --inputs=<list-file-name> --merge-factor=<int> |\\
-	   --run-number=<int> --first-subrun=<int> \\
-	   --events-per-job=<int> --njobs=<int> }\\
-	 [--old-seeds=<seeds-file-name>] \\
-	 [--auxinput=[numFiles:]<fclVarName>:<filelist>] \\
-	 [--verbose] [--help] \\
-	 template-fcl-file
+           --run-number=<int> --first-subrun=<int> \\
+           --events-per-job=<int> --njobs=<int> }\\
+         [--old-seeds=<seeds-file-name>] \\
+         [--auxinput=[numFiles:]<fclVarName>:<filelist>] \\
+         [--verbose] [--help] \\
+         template-fcl-file
 
 That will write --njobs fcl files to the current directory.  File
 names will be constructed using --description, --dsconf, and
@@ -76,10 +76,10 @@ use constant outputfile_conf => 'MU2EGRIDDSCONF';
 sub checkParameterValues($$) {
     my ($opt, $list) = @_;
     foreach my $a (@$list) {
-	die "Error: parameter $a must be specified\n" unless defined $$opt{$a};
-	my $val = $$opt{$a};
-	die "Invalid value of parameter $a = '$val'"
-	    unless $val =~ /^\w[-\w]*$/;
+        die "Error: parameter $a must be specified\n" unless defined $$opt{$a};
+        my $val = $$opt{$a};
+        die "Invalid value of parameter $a = '$val'"
+            unless $val =~ /^\w[-\w]*$/;
     }
 }
 
@@ -108,7 +108,7 @@ sub makeArtFileName($$) {
     die "Error parsing art file name $template: expect extension .art\n" if $ext ne 'art';
 
     die "Error parsing art file name $template: unknown data tier $tier\n"
-	unless grep( /^$tier$/, ('sim', 'mix', 'dig', 'mcs') );
+        unless grep( /^$tier$/, ('sim', 'mix', 'dig', 'mcs') );
 
     return join('.', ($tier, outputfile_owner, $description, outputfile_conf, $newseq, 'art') );
 }
@@ -136,16 +136,16 @@ sub addRandomSeed($$) {
 
     my $seed=0;
     while(!$seed) {
-	my $recsize = 4; # bytes
-	my $binseed = 0;
-	read($rndfh, $binseed, $recsize) == $recsize or die "Error reading from /dev/urandom: $!\n";
-	my $inseed = unpack '%32L', $binseed;
-	$seed = $inseed % $seedlimit;
+        my $recsize = 4; # bytes
+        my $binseed = 0;
+        read($rndfh, $binseed, $recsize) == $recsize or die "Error reading from /dev/urandom: $!\n";
+        my $inseed = unpack '%32L', $binseed;
+        $seed = $inseed % $seedlimit;
 
-	if($$usedSeeds{$seed}) {
-	    print STDERR "Skipping old seed $seed\n";
-	    redo;
-	}
+        if($$usedSeeds{$seed}) {
+            print STDERR "Skipping old seed $seed\n";
+            redo;
+        }
     }
     $$usedSeeds{$seed} = 1;
 
@@ -160,22 +160,22 @@ my %opt = ('dsowner' =>  $defaultUser, 'verbose' => 0, 'help' => 0);
 
 # Process command line opts.
 GetOptions(\%opt,
-	   'description=s',
-	   'dsconf=s',
-	   'generator-type=s',
-	   'simulation-stage=i',
-	   'primary-particle=s',
-	   'inputs=s',
-	   'merge-factor=i',
-	   'run-number=i',
-	   'first-subrun=i',
-	   'events-per-job=i',
-	   'njobs=i',
-	   'old-seeds=s',
-	   'dsowner=s',
-	   'help',
-	   'verbose',
-    ) 
+           'description=s',
+           'dsconf=s',
+           'generator-type=s',
+           'simulation-stage=i',
+           'primary-particle=s',
+           'inputs=s',
+           'merge-factor=i',
+           'run-number=i',
+           'first-subrun=i',
+           'events-per-job=i',
+           'njobs=i',
+           'old-seeds=s',
+           'dsowner=s',
+           'help',
+           'verbose',
+    )
     or die "\nError processing command line options.\n";
 
 if($opt{'help'}) {
@@ -194,7 +194,7 @@ my $templatefile = $ARGV[0];
 
 #----------------------------------------------------------------
 # Set up the environment and extract info from the input fcl file
-$ENV{'FHICL_FILE_PATH'} = 
+$ENV{'FHICL_FILE_PATH'} =
     defined($ENV{'FHICL_FILE_PATH'}) ?
     ".:$ENV{'FHICL_FILE_PATH'}"
     : ".";
@@ -213,7 +213,7 @@ chomp $ntsout;
 print "Got ntsout = $ntsout\n" if $verbose;
 
 # optional .art output files
-my @outmods = `fhicl-getpar --keys outputs $templatefile 2>/dev/null`; 
+my @outmods = `fhicl-getpar --keys outputs $templatefile 2>/dev/null`;
 chomp @outmods;
 print "Got outmods = @outmods\n" if $verbose;
 my %fwout;
@@ -221,7 +221,7 @@ foreach my $mod (@outmods) {
     my $cmd = sprintf "fhicl-getpar --string ".fclkey_outModFMT." $templatefile 2>/dev/null", $mod;
     my $outfile = `$cmd`;
     if($?) {
-	die "Error: no fileName for outputs.$mod\n";
+        die "Error: no fileName for outputs.$mod\n";
     }
     chomp $outfile;;
     $fwout{$mod} = $outfile;
@@ -237,15 +237,15 @@ print "needRandomSeeds = $needRandomSeeds because got @seedout\n" if $verbose;
 my %usedSeeds;
 if($needRandomSeeds) {
     die "A list of random seeds from existing subruns of this dataset must be specified with --old-seeds.\n"
-	."Use an empty file for the initial run.\n"
-	unless defined $opt{'old-seeds'};
+        ."Use an empty file for the initial run.\n"
+        unless defined $opt{'old-seeds'};
 
     open(my $oldseeds, '<', $opt{'old-seeds'}) or die "Error opening input file $opt{'old-seeds'}: $!\n";
     while(my $line = <$oldseeds>) {
-	chomp $line;
-	next if $line eq '';
-	die "Error: bad seed '$line'\n" unless $line =~ /^\d+$/;
-	$usedSeeds{0 + $line} = 1;
+        chomp $line;
+        next if $line eq '';
+        die "Error: bad seed '$line'\n" unless $line =~ /^\d+$/;
+        $usedSeeds{0 + $line} = 1;
     }
 }
 elsif(defined $opt{'old-seeds'}) {
@@ -256,13 +256,13 @@ elsif(defined $opt{'old-seeds'}) {
 # These arguments must always be provided
 
 checkParameterValues(\%opt,
-		     ['dsowner',
-		      'dsconf',
-		      'description',
-		      'generator-type',
-		      'simulation-stage',
-		      'primary-particle'
-		     ]);
+                     ['dsowner',
+                      'dsconf',
+                      'description',
+                      'generator-type',
+                      'simulation-stage',
+                      'primary-particle'
+                     ]);
 
 my $dsowner = $opt{'dsowner'};
 my $dsconf = $opt{'dsconf'};
@@ -280,45 +280,45 @@ my @fileInputsArgs = ('inputs', 'merge-factor');
 if($srctype eq 'EmptyEvent') {
 
     foreach my $k (@emptySourceArgs) {
-	(defined $opt{$k} and $opt{$k} ne '' )
-	    or die "Error: --$k must be specified and nonempty for EmptySource fcl files.  Try the --help option.\n";
+        (defined $opt{$k} and $opt{$k} ne '' )
+            or die "Error: --$k must be specified and nonempty for EmptySource fcl files.  Try the --help option.\n";
     }
 
     foreach my $k (@fileInputsArgs) {
-	die "Error: --$k is not compatible with EmtpySource fcl file.  Try the --help option.\n"
-	    if(defined $opt{$k});
+        die "Error: --$k is not compatible with EmtpySource fcl file.  Try the --help option.\n"
+            if(defined $opt{$k});
     }
 
     for(my $i = 0; $i < $opt{'njobs'}; ++$i) {
-	my $subrun = $i + $opt{'first-subrun'};
+        my $subrun = $i + $opt{'first-subrun'};
 
-	my $run = $opt{'run-number'};
+        my $run = $opt{'run-number'};
 
-	my $seq = sprintf "%06i_%08i", $run, $subrun;
-	my $fn =  "cnf.$dsowner.$opt{description}.$dsconf.$seq.fcl";
-	
-	open( my $fh,  '>', $fn ) or die "error opening output file $fn: $!\n";
-	# print "$fn\n";
-	copy($templatefile, $fh) or die "error copying $templatefile to $fn: $!\n";
+        my $seq = sprintf "%06i_%08i", $run, $subrun;
+        my $fn =  "cnf.$dsowner.$opt{description}.$dsconf.$seq.fcl";
 
-	print $fh "\n#----------------------------------------------------------------\n";
-	print $fh "# Code added by generate_fcl:\n";
+        open( my $fh,  '>', $fn ) or die "error opening output file $fn: $!\n";
+        # print "$fn\n";
+        copy($templatefile, $fh) or die "error copying $templatefile to $fn: $!\n";
 
-	print $fh "mu2emetadata.mc.generator_type: $generator_type\n";
-	print $fh "mu2emetadata.mc.simulation_stage: $simulation_stage\n";
-	print $fh "mu2emetadata.mc.primary_particle: $primary_particle\n";
+        print $fh "\n#----------------------------------------------------------------\n";
+        print $fh "# Code added by generate_fcl:\n";
 
-	my $histval = makeNtsFileName($ntsout, $seq);
-	print $fh  fclkey_TFileServiceFN .": \"$histval\"\n" ;
+        print $fh "mu2emetadata.mc.generator_type: $generator_type\n";
+        print $fh "mu2emetadata.mc.simulation_stage: $simulation_stage\n";
+        print $fh "mu2emetadata.mc.primary_particle: $primary_particle\n";
 
-	foreach my $mod (@outmods) {
-	    my $artkey = sprintf fclkey_outModFMT, $mod;
-	    my $artval = makeArtFileName($fwout{$mod}, $seq);
-	    print $fh  "$artkey : \"$artval\"\n" ;
-	}
+        my $histval = makeNtsFileName($ntsout, $seq);
+        print $fh  fclkey_TFileServiceFN .": \"$histval\"\n" ;
 
-	addRandomSeed($fh, \%usedSeeds) if $needRandomSeeds;
-	addEventID($fh, $run, $subrun, $opt{'events-per-job'});
+        foreach my $mod (@outmods) {
+            my $artkey = sprintf fclkey_outModFMT, $mod;
+            my $artval = makeArtFileName($fwout{$mod}, $seq);
+            print $fh  "$artkey : \"$artval\"\n" ;
+        }
+
+        addRandomSeed($fh, \%usedSeeds) if $needRandomSeeds;
+        addEventID($fh, $run, $subrun, $opt{'events-per-job'});
     }
 
 }
