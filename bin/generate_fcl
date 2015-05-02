@@ -304,21 +304,32 @@ if($srctype eq 'EmptyEvent') {
         print $fh "\n#----------------------------------------------------------------\n";
         print $fh "# Code added by generate_fcl:\n";
 
-        print $fh "mu2emetadata.mc.generator_type: $generator_type\n";
-        print $fh "mu2emetadata.mc.simulation_stage: $simulation_stage\n";
-        print $fh "mu2emetadata.mc.primary_particle: $primary_particle\n";
+        my @fcloutkeys; # fcl keys for all output file name
 
         my $histval = makeNtsFileName($ntsout, $seq);
         print $fh  fclkey_TFileServiceFN .": \"$histval\"\n" ;
+        push @fcloutkeys, fclkey_TFileServiceFN;
 
         foreach my $mod (@outmods) {
             my $artkey = sprintf fclkey_outModFMT, $mod;
             my $artval = makeArtFileName($fwout{$mod}, $seq);
             print $fh  "$artkey : \"$artval\"\n" ;
+            push @fcloutkeys, $artkey;
         }
+
+        # fcl keys for output file names
 
         addRandomSeed($fh, \%usedSeeds) if $needRandomSeeds;
         addEventID($fh, $run, $subrun, $opt{'events-per-job'});
+
+        print $fh "mu2emetadata.mc.generator_type: $generator_type\n";
+        print $fh "mu2emetadata.mc.simulation_stage: $simulation_stage\n";
+        print $fh "mu2emetadata.mc.primary_particle: $primary_particle\n";
+
+        print $fh 'mu2emetadata.fcl.outkeys: [ ', join(', ', @fcloutkeys), " ]\n";
+
+        print $fh "# End code added by generate_fcl:\n";
+        print $fh "#----------------------------------------------------------------\n";
     }
 
 }
