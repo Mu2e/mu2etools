@@ -113,32 +113,24 @@ sub checkParameterValues($$) {
 
 sub makeNtsFileName($$) {
     my ($template, $newseq) = @_;
+    my $fn = parseMu2eFileName($template);
 
-    # data_tier.owner.description.configuration.sequencer.file_format
-    my ($tier, $owner, $description, $conf, $seq, $ext, $extra) = split(/\./, $template);
+    die "Error parsing histo file name $template: expect extension .root\n" unless $fn->extension eq 'root';
+    die "Error parsing histo file name $template: expect data tier nts\n" unless $fn->tier eq 'nts';
 
-    die "Error parsing histo file name $template: too many fields\n" if defined $extra;
-    die "Error parsing histo file name $template: too few fields\n" if not defined $ext;
-    die "Error parsing histo file name $template: expect extension .root\n" if $ext ne 'root';
-    die "Error parsing histo file name $template: expect data tier nts\n" if $tier ne 'nts';
-
-    return join('.', ('nts', outputfile_owner, $description, outputfile_conf, $newseq, 'root') );
+    return join('.', ('nts', outputfile_owner, $fn->description, outputfile_conf, $newseq, 'root') );
 }
 
 sub makeArtFileName($$) {
     my ($template, $newseq) = @_;
 
-    # data_tier.owner.description.configuration.sequencer.file_format
-    my ($tier, $owner, $description, $conf, $seq, $ext, $extra) = split(/\./, $template);
+    my $fn = parseMu2eFileName($template);
 
-    die "Error parsing art file name $template: too many fields\n" if defined $extra;
-    die "Error parsing art file name $template: too few fields\n" if not defined $ext;
-    die "Error parsing art file name $template: expect extension .art\n" if $ext ne 'art';
+    die "Error parsing histo file name $template: expect extension .art\n" unless $fn->extension eq 'art';
+    die "Error parsing art file name $template: unknown data tier ",$fn->tier,"\n"
+        unless grep( m'^'.$fn->tier.'$', ('sim', 'mix', 'dig', 'mcs') );
 
-    die "Error parsing art file name $template: unknown data tier $tier\n"
-        unless grep( /^$tier$/, ('sim', 'mix', 'dig', 'mcs') );
-
-    return join('.', ($tier, outputfile_owner, $description, outputfile_conf, $newseq, 'art') );
+    return join('.', ($fn->tier, outputfile_owner, $fn->description, outputfile_conf, $newseq, 'art') );
 }
 
 #================================================================
