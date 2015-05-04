@@ -15,6 +15,13 @@ use Data::Dumper; # for debugging
 use Class::Struct Mu2eFileName =>
     [tier=>'$', owner=>'$', description=>'$', configuration=>'$', sequencer=>'$', extension=>'$' ];
 
+# information from an --auxinput specification (same as mu2eart's --fclin spec)
+# listFileName is the name of the file specified on cmdline,
+# filenames is the content of that file
+# prolog==1 requests to place fcl defs in a BEGIN_PROLOG/END_PROLOG block.
+use Class::Struct Mu2eAuxInSpec =>
+    [numFilesPerJob=>'$', fclkey=>'$', prolog=>'$', filenames=>'*@', listFileName=>'$'];
+
 #================================================================
 sub usage() {
     my $self = basename($0);
@@ -175,6 +182,36 @@ sub addRandomSeed($$) {
 }
 
 #================================================================
+sub sampleFileNames($) {
+    my ($spec) = @_;
+
+    my $res = [];
+
+    my %usedIndexes;
+
+    if($spec->numFilesPerJob > 0) {
+        die "--auxin requests too many files = ",$spec->numFilesPerJob,
+        " for file list ",$spec->listFileName,"\n"
+            unless $spec->numFilesPerJob < 1+$#{$spec->filenames};
+
+        for(my $i=0; $i<$spec->numFilesPerJob; ) {
+            my $index = int(rand($#{$spec->filenames}));
+            if(not defined $usedIndexes{$index}) {
+                push @$res, ${$spec->filenames}[$index];
+                $usedIndexes{$index} = 1;
+                ++$i;
+            }
+        }
+    }
+    else {
+        # use all files from the input list - no sampling
+        push @$res, @{$spec->filenames};
+    }
+
+    return $res;
+}
+
+#================================================================
 sub getNextInputListChunk($$) {
     my ($inputfh, $chunkSize) = @_;
     my @res;
@@ -211,9 +248,55 @@ sub addInputFileNames($$$) {
 }
 
 #================================================================
+sub addAuxInPrologs($$) {
+    my ($fh, $specs) = @_;
+
+    foreach my $ai (@$specs) {
+        if($ai->prolog) {
+            my $sample = sampleFileNames($ai);
+            print $fh "BEGIN_PROLOG  # by generate_fcl\n";
+            addInputFileNames($fh, $ai->fclkey, $sample);
+            print $fh "END_PROLOG  # by generate_fcl\n\n";
+        }
+    }
+}
+#================================================================
+# fhicl-getpar allows worker node script to query parameter values.
+# The names of @local variables are not directly accessible there, we
+# need to create a fcl parameter for each @local var in order to get
+# information about parents.
+sub generateKeysForLocals($$) {
+    my ($fh, $specs) = @_;
+    my @fclkeys;
+    foreach my $ai (@$specs) {
+        if($ai->prolog) {
+            my $key = 'mu2emetadata.fcl.inkey_values.' . $ai->fclkey;
+            print $fh $key . ': @local::' . $ai->fclkey . "\n";
+            push @fclkeys, $key;
+        }
+    }
+    return @fclkeys;
+}
+
+#================================================================
+sub addAuxInEpilogs($$) {
+    my ($fh, $specs) = @_;
+
+    my @fclinkeys;
+    foreach my $ai (@$specs) {
+        if(!$ai->prolog) {
+            my $sample = sampleFileNames($ai);
+            push @fclinkeys, addInputFileNames($fh, $ai->fclkey, $sample);
+        }
+    }
+    return @fclinkeys;
+}
+
+#================================================================
 # execution starts here
 my $defaultUser = getpwuid($EFFECTIVE_USER_ID);
-my %opt = ('dsowner' =>  $defaultUser, 'verbose' => 0, 'help' => 0);
+my @auxinputStrSpecs;
+my %opt = ('dsowner' =>  $defaultUser, 'auxinput' => \@auxinputStrSpecs, 'verbose' => 0, 'help' => 0);
 
 # Process command line opts.
 GetOptions(\%opt,
@@ -230,6 +313,7 @@ GetOptions(\%opt,
            'njobs=i',
            'old-seeds=s',
            'dsowner=s',
+           'auxinput=s',
            'help',
            'verbose',
     )
@@ -309,25 +393,55 @@ elsif(defined $opt{'old-seeds'}) {
     die "Error: the --old-seeds option will not have any effect because fcl config does not use " . fclkey_SeedService . "\n";
 }
 
-#================================================================
-sub setOutputFileNames($$) {
-    my ($fh, $seq) = @_;
+#----------------
+# Handle the --auxinput options
 
-    my @fcloutkeys; # fcl keys for all output file name
+my @auxin_specs;
+foreach my $str (@auxinputStrSpecs) {
 
-    my $histval = makeNtsFileName($ntsout, $seq);
-    print $fh  fclkey_TFileServiceFN .": \"$histval\"\n" ;
-    push @fcloutkeys, doubleQuote(fclkey_TFileServiceFN);
+    die "Error in an --auxin specification: no ':' in $str\n" unless $str =~ /:/;
 
-    foreach my $mod (@outmods) {
-        my $artkey = sprintf fclkey_outModFMT, $mod;
-        my $artval = doubleQuote(makeArtFileName($fwout{$mod}, $seq));
-        print $fh  "$artkey : $artval\n" ;
-        push @fcloutkeys, doubleQuote($artkey);
+    my $numFiles = 0; # the default: unlimited
+    my $var;
+    my $listfile;
+    (my $l1, my $l2) = split(/:/, $str, 2);
+    if($l1 =~ /^\d/) {
+        die "Invalid numFiles=$l1  in --auxinput=$str\n"
+            unless $l1 =~ /^\d+$/;
+        $numFiles = $l1;
+        die "Error in an --auxin specification: no 'filelist' part in $str\n" unless $l2 =~ /:/;
+        ($var, $listfile) = split(/:/, $l2, 2);
+    }
+    else {
+        ($var, $listfile) = ($l1, $l2);
     }
 
-    # fcl keys for output file names
-    print $fh 'mu2emetadata.fcl.outkeys: [ ', join(', ', @fcloutkeys), " ]\n";
+    my @auxfiles;
+    open(my $fh, '<', $listfile) or die "Can not open for reading file \"$listfile\": $!\n";
+    while(my $line = <$fh>) {
+        chomp($line);
+        die "Error in file $listfile: the line is empty or contains white spaces or other non-printable characters: \"$line\"\n"
+            unless $line =~ /^\p{IsGraph}+$/;
+
+        # Must be a Mu2e file name, as it will become an parent in the
+        # provenance record of our output datasets.
+        parseMu2eFileName($line);
+
+        push @auxfiles, $line;
+    }
+
+    my $prolog = 0;
+    $prolog = 1 if($var =~ s/^\@// );
+
+    my $spec = Mu2eAuxInSpec->new(
+        numFilesPerJob=>$numFiles,
+        fclkey=>$var,
+        prolog=>$prolog,
+        filenames=>\@auxfiles,
+        listFileName=>$listfile,
+        );
+
+    push @auxin_specs, $spec;
 }
 
 #================================================================
@@ -355,6 +469,41 @@ my $primary_particle = $opt{'primary-particle'};
 my @emptySourceArgs = ('run-number', 'first-subrun', 'events-per-job', 'njobs');
 my @fileInputsArgs = ('inputs', 'merge-factor');
 
+#================================================================
+sub setOutputFileNames($$) {
+    my ($fh, $seq) = @_;
+
+    my @fcloutkeys; # fcl keys for all output file name
+
+    my $histval = makeNtsFileName($ntsout, $seq);
+    print $fh  fclkey_TFileServiceFN .": \"$histval\"\n" ;
+    push @fcloutkeys, fclkey_TFileServiceFN;
+
+    foreach my $mod (@outmods) {
+        my $artkey = sprintf fclkey_outModFMT, $mod;
+        my $artval = doubleQuote(makeArtFileName($fwout{$mod}, $seq));
+        print $fh  "$artkey : $artval\n" ;
+        push @fcloutkeys, $artkey;
+    }
+
+    return \@fcloutkeys;
+}
+#----------------------------------------------------------------
+# Generated part common to EmptySource and RootInput cases
+sub printCommonTrailer($$$) {
+    my ($fh, $fclinkeys, $fcloutkeys) = @_;
+
+    print $fh "mu2emetadata.mc.generator_type: $generator_type\n";
+    print $fh "mu2emetadata.mc.simulation_stage: $simulation_stage\n";
+    print $fh "mu2emetadata.mc.primary_particle: $primary_particle\n";
+
+    print $fh "mu2emetadata.fcl.inkeys: [ ", join(", ", map  { doubleQuote($_) } @$fclinkeys ) ," ]\n";
+    print $fh 'mu2emetadata.fcl.outkeys: [ ', join(', ',map  { doubleQuote($_) } @$fcloutkeys), " ]\n";
+
+    print $fh "# End code added by generate_fcl:\n";
+    print $fh "#----------------------------------------------------------------\n";
+}
+#================================================================
 if($srctype eq 'EmptyEvent') {
 
     foreach my $k (@emptySourceArgs) {
@@ -376,38 +525,27 @@ if($srctype eq 'EmptyEvent') {
         my $fn =  "cnf.$dsowner.$opt{description}.$dsconf.$seq.fcl";
 
         open( my $fh,  '>', $fn ) or die "error opening output file $fn: $!\n";
-        # print "$fn\n";
-        copy($templatefile, $fh) or die "error copying $templatefile to $fn: $!\n";
+
+        addAuxInPrologs($fh, \@auxin_specs);
+
+        # Copy the content of the input template fcl.
+        open(my $templfh, '<', $templatefile) or die "Can not open \"$templatefile\" $!\n";
+        while(my $line = <$templfh>) {
+            print $fh $line;
+        }
 
         print $fh "\n#----------------------------------------------------------------\n";
         print $fh "# Code added by generate_fcl:\n";
 
-        my @fcloutkeys; # fcl keys for all output file name
-
-        my $histval = makeNtsFileName($ntsout, $seq);
-        print $fh  fclkey_TFileServiceFN .": \"$histval\"\n" ;
-        push @fcloutkeys, fclkey_TFileServiceFN;
-
-        foreach my $mod (@outmods) {
-            my $artkey = sprintf fclkey_outModFMT, $mod;
-            my $artval = makeArtFileName($fwout{$mod}, $seq);
-            print $fh  "$artkey : \"$artval\"\n" ;
-            push @fcloutkeys, $artkey;
-        }
-
-        # fcl keys for output file names
-
-        addRandomSeed($fh, \%usedSeeds) if $needRandomSeeds;
         addEventID($fh, $run, $subrun, $opt{'events-per-job'});
+        addRandomSeed($fh, \%usedSeeds) if $needRandomSeeds;
 
-        print $fh "mu2emetadata.mc.generator_type: $generator_type\n";
-        print $fh "mu2emetadata.mc.simulation_stage: $simulation_stage\n";
-        print $fh "mu2emetadata.mc.primary_particle: $primary_particle\n";
+        my @fclinkeys;
+        push @fclinkeys, generateKeysForLocals($fh, \@auxin_specs);
+        push @fclinkeys, addAuxInEpilogs($fh,\@auxin_specs);
 
-        print $fh 'mu2emetadata.fcl.outkeys: [ ', join(', ', @fcloutkeys), " ]\n";
-
-        print $fh "# End code added by generate_fcl:\n";
-        print $fh "#----------------------------------------------------------------\n";
+        my $fcloutkeys = setOutputFileNames($fh, $seq);
+        printCommonTrailer($fh, \@fclinkeys, $fcloutkeys);
     }
 
 }
@@ -432,35 +570,37 @@ elsif($srctype eq 'RootInput') {
         my $fn =  "cnf.$dsowner.$opt{description}.$dsconf.$seq.fcl";
 
         open( my $fh,  '>', $fn ) or die "error opening output file $fn: $!\n";
-        # print "$fn\n";
-        copy($templatefile, $fh) or die "error copying $templatefile to $fn: $!\n";
+
+        addAuxInPrologs($fh, \@auxin_specs);
+
+        # Copy the content of the input template fcl.
+        open(my $templfh, '<', $templatefile) or die "Can not open \"$templatefile\" $!\n";
+        while(my $line = <$templfh>) {
+            print $fh $line;
+        }
 
         print $fh "\n#----------------------------------------------------------------\n";
         print $fh "# Code added by generate_fcl:\n";
 
         addRandomSeed($fh, \%usedSeeds) if $needRandomSeeds;
 
-        setOutputFileNames($fh, $seq);
+        my @fclinkeys;
 
         # Set input file names
-        my @fclinkeys;
         push @fclinkeys, addInputFileNames($fh, "source.fileNames", \@chunk);
 
-        print $fh "mu2emetadata.fcl.inkeys: [ ", join(", ", map  { doubleQuote($_) } @fclinkeys ) ," ]\n";
+        push @fclinkeys, generateKeysForLocals($fh, \@auxin_specs);
+        push @fclinkeys, addAuxInEpilogs($fh, \@auxin_specs);
 
-        print $fh "mu2emetadata.mc.generator_type: $generator_type\n";
-        print $fh "mu2emetadata.mc.simulation_stage: $simulation_stage\n";
-        print $fh "mu2emetadata.mc.primary_particle: $primary_particle\n";
-
-        print $fh "# End code added by generate_fcl:\n";
-        print $fh "#----------------------------------------------------------------\n";
-
+        my $fcloutkeys = setOutputFileNames($fh, $seq);
+        printCommonTrailer($fh, \@fclinkeys, $fcloutkeys);
     }
 
 }
 else {
     die "Error: unknown source.module_type = $srctype\n";
 }
+
 
 #================================================================
 # Produce a generic json file for upload of generated fcl files to SAM
