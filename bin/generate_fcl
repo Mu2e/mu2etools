@@ -12,6 +12,9 @@ use English qw( -no_match_vars ) ; # Avoids regex performance penalty
 
 use Data::Dumper; # for debugging
 
+use Class::Struct Mu2eFileName =>
+    [tier=>'$', owner=>'$', description=>'$', configuration=>'$', sequencer=>'$', extension=>'$' ];
+
 #================================================================
 sub usage() {
     my $self = basename($0);
@@ -71,6 +74,31 @@ use constant fclkey_outModFMT => 'outputs.%s.fileName';
 
 use constant outputfile_owner => 'MU2EGRIDDSOWNER';
 use constant outputfile_conf => 'MU2EGRIDDSCONF';
+
+#================================================================
+sub doubleQuote($) {
+    my ($fn) = @_;
+    return  '"'.$fn.'"';
+}
+
+#================================================================
+sub parseMu2eFileName($) {
+    my ($fn) = @_;
+
+    my ($tier, $owner, $description, $conf, $seq, $ext, $extra) = split(/\./, basename($fn));
+
+    die "Error parsing Mu2e file name $fn: too many fields\n" if defined $extra;
+    die "Error parsing Mu2e file name $fn: too few fields\n" if not defined $ext;
+
+    return Mu2eFileName->new(
+        tier=>$tier,
+        owner=>$owner,
+        description=>$description,
+        configuration=>$conf,
+        sequencer=>$seq,
+        extension=>$ext,
+        );
+}
 
 #================================================================
 sub checkParameterValues($$) {
@@ -155,6 +183,43 @@ sub addRandomSeed($$) {
 }
 
 #================================================================
+sub getNextInputListChunk($$) {
+    my ($inputfh, $chunkSize) = @_;
+    my @res;
+    my $line;
+    for(my $count=0; ($count < $chunkSize) and ($line = <$inputfh>); ++$count) {
+        chomp($line);
+        die "Input file list error: the line is empty or contains white spaces or other non-printable characters: \"$line\"\n"
+            unless $line =~ /^\p{IsGraph}+$/;
+        push @res, $line;
+    }
+    return @res;
+}
+
+#================================================================
+sub extractASequencer($) {
+    my ($fnlist) = @_;
+
+    die "extractASequencer() got empty inputs\n"
+        unless $#$fnlist > -1;
+
+    my @seqs;
+    foreach my $fn (@$fnlist) {
+        my  $p = parseMu2eFileName($fn);
+        push @seqs,$p->sequencer;
+    }
+
+    return (sort @seqs)[0];
+}
+#================================================================
+sub addInputFileNames($$$) {
+    my ($fh, $fclkey, $listref) = @_;
+    print $fh "$fclkey: [\n", join(",\n", map  { doubleQuote($_) } @$listref ) ,"\n]\n";
+    return $fclkey;
+}
+
+#================================================================
+# execution starts here
 my $defaultUser = getpwuid($EFFECTIVE_USER_ID);
 my %opt = ('dsowner' =>  $defaultUser, 'verbose' => 0, 'help' => 0);
 
@@ -252,7 +317,28 @@ elsif(defined $opt{'old-seeds'}) {
     die "Error: the --old-seeds option will not have any effect because fcl config does not use " . fclkey_SeedService . "\n";
 }
 
-#----------------------------------------------------------------
+#================================================================
+sub setOutputFileNames($$) {
+    my ($fh, $seq) = @_;
+
+    my @fcloutkeys; # fcl keys for all output file name
+
+    my $histval = makeNtsFileName($ntsout, $seq);
+    print $fh  fclkey_TFileServiceFN .": \"$histval\"\n" ;
+    push @fcloutkeys, doubleQuote(fclkey_TFileServiceFN);
+
+    foreach my $mod (@outmods) {
+        my $artkey = sprintf fclkey_outModFMT, $mod;
+        my $artval = doubleQuote(makeArtFileName($fwout{$mod}, $seq));
+        print $fh  "$artkey : $artval\n" ;
+        push @fcloutkeys, doubleQuote($artkey);
+    }
+
+    # fcl keys for output file names
+    print $fh 'mu2emetadata.fcl.outkeys: [ ', join(', ', @fcloutkeys), " ]\n";
+}
+
+#================================================================
 # These arguments must always be provided
 
 checkParameterValues(\%opt,
@@ -334,7 +420,51 @@ if($srctype eq 'EmptyEvent') {
 
 }
 elsif($srctype eq 'RootInput') {
-    die "RootInput mode is not implemented";
+
+    foreach my $k (@fileInputsArgs) {
+        (defined $opt{$k} and $opt{$k} ne '' )
+            or die "Error: --$k must be specified and nonempty for RootInput fcl files.  Try the --help option.\n";
+    }
+
+    foreach my $k (@emptySourceArgs) {
+        die "Error: --$k is not compatible with RootInput fcl files.  Try the --help option.\n"
+            if(defined $opt{$k});
+    }
+
+    my $inputSourceList = $opt{'inputs'};
+    open(my $insrcfh, '<', $inputSourceList) or die "Can not open input file \"$inputSourceList\": $!\n";
+
+    while(my @chunk = getNextInputListChunk($insrcfh, $opt{'merge-factor'})) {
+
+        my $seq = extractASequencer(\@chunk);
+        my $fn =  "cnf.$dsowner.$opt{description}.$dsconf.$seq.fcl";
+
+        open( my $fh,  '>', $fn ) or die "error opening output file $fn: $!\n";
+        # print "$fn\n";
+        copy($templatefile, $fh) or die "error copying $templatefile to $fn: $!\n";
+
+        print $fh "\n#----------------------------------------------------------------\n";
+        print $fh "# Code added by generate_fcl:\n";
+
+        addRandomSeed($fh, \%usedSeeds) if $needRandomSeeds;
+
+        setOutputFileNames($fh, $seq);
+
+        # Set input file names
+        my @fclinkeys;
+        push @fclinkeys, addInputFileNames($fh, "source.fileNames", \@chunk);
+
+        print $fh "mu2emetadata.fcl.inkeys: [ ", join(", ", map  { doubleQuote($_) } @fclinkeys ) ," ]\n";
+
+        print $fh "mu2emetadata.mc.generator_type: $generator_type\n";
+        print $fh "mu2emetadata.mc.simulation_stage: $simulation_stage\n";
+        print $fh "mu2emetadata.mc.primary_particle: $primary_particle\n";
+
+        print $fh "# End code added by generate_fcl:\n";
+        print $fh "#----------------------------------------------------------------\n";
+
+    }
+
 }
 else {
     die "Error: unknown source.module_type = $srctype\n";
