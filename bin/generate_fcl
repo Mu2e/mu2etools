@@ -151,9 +151,11 @@ sub makeArtFileName($$) {
 #================================================================
 sub addEventID($$$$) {
     my ($fh, $run, $subrun, $maxEvents) = @_;
-    print $fh "source.firstRun: $run\n";
-    print $fh "source.firstSubRun: $subrun\n";
-    print $fh "source.maxEvents: $maxEvents\n";
+    print $fh
+        "source.firstRun: $run\n",
+        "source.firstSubRun: $subrun\n",
+        "source.maxEvents: $maxEvents\n"
+        or die "addEventID(): error printing to output file: $!\n";
 }
 
 sub addRandomSeed($$) {
@@ -184,9 +186,11 @@ sub addRandomSeed($$) {
     }
     $$usedSeeds{$seed} = 1;
 
-    print $fh fclkey_SeedService . ".policy:  autoIncrement\n";
-    print $fh fclkey_SeedService . ".maxUniqueEngines: $maxUniqueEngines\n";
-    print $fh fclkey_SeedService . ".baseSeed: $seed\n";
+    print $fh
+        fclkey_SeedService . ".policy:  autoIncrement\n",
+        fclkey_SeedService . ".maxUniqueEngines: $maxUniqueEngines\n",
+        fclkey_SeedService . ".baseSeed: $seed\n"
+        or die "Error printing to output file: $!\n";
 }
 
 #================================================================
@@ -251,7 +255,8 @@ sub extractASequencer($) {
 #================================================================
 sub addInputFileNames($$$) {
     my ($fh, $fclkey, $listref) = @_;
-    print $fh "$fclkey: [\n", join(",\n", map  { doubleQuote($_) } @$listref ) ,"\n]\n";
+    print $fh "$fclkey: [\n", join(",\n", map  { doubleQuote($_) } @$listref ) ,"\n]\n"
+        or die "addInputFileNames(): error printing to output file: $!\n";
     return $fclkey;
 }
 
@@ -262,9 +267,11 @@ sub addAuxInPrologs($$) {
     foreach my $ai (@$specs) {
         if($ai->prolog) {
             my $sample = sampleFileNames($ai);
-            print $fh "BEGIN_PROLOG  # by generate_fcl\n";
+            print $fh "BEGIN_PROLOG  # by generate_fcl\n"
+                or die "addAuxInPrologs() BEGIN: error printing to output file: $!\n";
             addInputFileNames($fh, $ai->fclkey, $sample);
-            print $fh "END_PROLOG  # by generate_fcl\n\n";
+            print $fh "END_PROLOG  # by generate_fcl\n\n"
+                or die "addAuxInPrologs() END: error printing to output file: $!\n";
         }
     }
 }
@@ -279,7 +286,8 @@ sub generateKeysForLocals($$) {
     foreach my $ai (@$specs) {
         if($ai->prolog) {
             my $key = 'mu2emetadata.fcl.inkey_values.' . $ai->fclkey;
-            print $fh $key . ': @local::' . $ai->fclkey . "\n";
+            print $fh $key . ': @local::' . $ai->fclkey . "\n"
+                or die "generateKeysForLocals(): error printing to output file: $!\n";
             push @fclkeys, $key;
         }
     }
@@ -487,13 +495,17 @@ sub setOutputFileNames($$) {
     my @fcloutkeys; # fcl keys for all output file name
 
     my $histval = makeNtsFileName($ntsout, $seq);
-    print $fh  fclkey_TFileServiceFN .": \"$histval\"\n" ;
-    push @fcloutkeys, fclkey_TFileServiceFN;
+    print $fh  fclkey_TFileServiceFN .": \"$histval\"\n"
+        or die "setOutputFileNames(): error printing to output file: $!\n";
+
+    push @fcloutkeys, fclkey_TFileServiceFN
+        or die "setOutputFileNames(): error printing to output file: $!\n";
 
     foreach my $mod (@outmods) {
         my $artkey = sprintf fclkey_outModFMT, $mod;
         my $artval = doubleQuote(makeArtFileName($fwout{$mod}, $seq));
-        print $fh  "$artkey : $artval\n" ;
+        print $fh  "$artkey : $artval\n"
+            or die "setOutputFileNames(): error printing to output file: $!\n";
         push @fcloutkeys, $artkey;
     }
 
@@ -504,15 +516,15 @@ sub setOutputFileNames($$) {
 sub printCommonTrailer($$$) {
     my ($fh, $fclinkeys, $fcloutkeys) = @_;
 
-    print $fh "mu2emetadata.mc.generator_type: $generator_type\n";
-    print $fh "mu2emetadata.mc.simulation_stage: $simulation_stage\n";
-    print $fh "mu2emetadata.mc.primary_particle: $primary_particle\n";
-
-    print $fh "mu2emetadata.fcl.inkeys: [ ", join(", ", map  { doubleQuote($_) } @$fclinkeys ) ," ]\n";
-    print $fh 'mu2emetadata.fcl.outkeys: [ ', join(', ',map  { doubleQuote($_) } @$fcloutkeys), " ]\n";
-
-    print $fh "# End code added by generate_fcl:\n";
-    print $fh "#----------------------------------------------------------------\n";
+    print $fh
+        "mu2emetadata.mc.generator_type: $generator_type\n",
+        "mu2emetadata.mc.simulation_stage: $simulation_stage\n",
+        "mu2emetadata.mc.primary_particle: $primary_particle\n",
+        "mu2emetadata.fcl.inkeys: [ ", join(", ", map  { doubleQuote($_) } @$fclinkeys ) ," ]\n",
+        'mu2emetadata.fcl.outkeys: [ ', join(', ',map  { doubleQuote($_) } @$fcloutkeys), " ]\n",
+        "# End code added by generate_fcl:\n",
+        "#----------------------------------------------------------------\n"
+        or die "printCommonTrailer(): error printing to output file: $!\n";
 }
 #================================================================
 if($srctype eq 'EmptyEvent') {
@@ -542,11 +554,14 @@ if($srctype eq 'EmptyEvent') {
         # Copy the content of the input template fcl.
         open(my $templfh, '<', $templatefile) or die "Can not open \"$templatefile\" $!\n";
         while(my $line = <$templfh>) {
-            print $fh $line;
+            print $fh $line
+                or die "Error printing to output file: $!\n";
         }
 
-        print $fh "\n#----------------------------------------------------------------\n";
-        print $fh "# Code added by generate_fcl:\n";
+        print $fh
+            "\n#----------------------------------------------------------------\n",
+            "# Code added by generate_fcl:\n"
+            or die "Error printing to output file: $!\n";
 
         addEventID($fh, $run, $subrun, $opt{'events-per-job'});
         addRandomSeed($fh, \%usedSeeds) if $needRandomSeeds;
@@ -587,11 +602,14 @@ elsif($srctype eq 'RootInput') {
         # Copy the content of the input template fcl.
         open(my $templfh, '<', $templatefile) or die "Can not open \"$templatefile\" $!\n";
         while(my $line = <$templfh>) {
-            print $fh $line;
+            print $fh $line
+                or die "Error printing to output file: $!\n";
         }
 
-        print $fh "\n#----------------------------------------------------------------\n";
-        print $fh "# Code added by generate_fcl:\n";
+        print $fh
+            "\n#----------------------------------------------------------------\n",
+            "# Code added by generate_fcl:\n"
+            or die "Error printing to output file: $!\n";
 
         addRandomSeed($fh, \%usedSeeds) if $needRandomSeeds;
 
@@ -605,6 +623,8 @@ elsif($srctype eq 'RootInput') {
 
         my $fcloutkeys = setOutputFileNames($fh, $seq);
         printCommonTrailer($fh, \@fclinkeys, $fcloutkeys);
+
+        close($fh) or die "Can not close file \"$fn\": $!\n";
     }
 
 }
@@ -625,7 +645,9 @@ print $json <<EOF
     "mc.primary_particle": "$primary_particle"
 }
 EOF
-    ;
+    or die "Error printing to json file: $!\n";
+
+close($json) or die "Can not close file \"$jsonfilename\": $!\n";
 
 #================================================================
 # Dump a list of all previously used seeds: the inputs list plus those
@@ -634,7 +656,10 @@ EOF
 
 my ($outseedfh, $outseedfn) = tempfile("seeds.$dsowner.$opt{description}.$dsconf.XXXX", SUFFIX => '.txt');
 for my $seed (sort {$a <=> $b} keys %usedSeeds) {
-    print $outseedfh $seed, "\n";
+    print $outseedfh $seed, "\n"
+        or die "Error printing the seeds: $!\n";
 }
+
+close($outseedfh) or die "Can not close file \"$outseedfn\": $!\n";
 
 #================================================================
