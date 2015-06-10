@@ -517,9 +517,9 @@ sub printCommonTrailer($$$) {
     my ($fh, $fclinkeys, $fcloutkeys) = @_;
 
     print $fh
-        "mu2emetadata.mc.generator_type: $generator_type\n",
+        "mu2emetadata.mc.generator_type: \"$generator_type\"\n",
         "mu2emetadata.mc.simulation_stage: $simulation_stage\n",
-        "mu2emetadata.mc.primary_particle: $primary_particle\n",
+        "mu2emetadata.mc.primary_particle: \"$primary_particle\"\n",
         "mu2emetadata.fcl.inkeys: [ ", join(", ", map  { doubleQuote($_) } @$fclinkeys ) ," ]\n",
         'mu2emetadata.fcl.outkeys: [ ', join(', ',map  { doubleQuote($_) } @$fcloutkeys), " ]\n",
         "# End code added by generate_fcl:\n",
