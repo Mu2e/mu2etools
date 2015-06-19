@@ -30,6 +30,9 @@ Usage:
         $self \\
          --description=<string> --dsconf=<string> \\
          [--dsowner=<string>] \\
+         --generator-type=<string> \\
+         --simulation-stage=<int> \\
+         --primary-particle=<string> \\
          { --inputs=<list-file-name> --merge-factor=<int> |\\
            --run-number=<int> --first-subrun=<int> \\
            --events-per-job=<int> --njobs=<int> }\\
@@ -318,6 +321,7 @@ my %opt = ('dsowner' =>  $defaultUser, 'auxinput' => \@auxinputStrSpecs, 'verbos
 GetOptions(\%opt,
            'description=s',
            'dsconf=s',
+           'dsowner=s',
            'generator-type=s',
            'simulation-stage=i',
            'primary-particle=s',
@@ -328,7 +332,6 @@ GetOptions(\%opt,
            'events-per-job=i',
            'njobs=i',
            'old-seeds=s',
-           'dsowner=s',
            'auxinput=s',
            'help',
            'verbose',
