@@ -7,6 +7,7 @@ use autodie;
 use Getopt::Long;
 use File::Basename;
 use File::Copy;
+use File::Path qw/make_path/;
 use File::Temp qw/tempfile/;
 use English qw( -no_match_vars ) ; # Avoids regex performance penalty
 
@@ -38,16 +39,18 @@ Usage:
            --events-per-job=<int> --njobs=<int> }\\
          [--old-seeds=<seeds-file-name>] \\
          [--auxinput=[numFiles:]<fclVarName>:<filelist>] \\
+         [--split] \\
+         [--split-start=<int> --split-stride=<int> --slit-batch-size=<int>] \\
          [--verbose] [--help] \\
          template-fcl-file
 
-That will write --njobs fcl files to the current directory.  File
-names will be constructed using --description, --dsconf, and
-other pieces of information according to the Mu2e convention
+That will produce --njobs fcl files.  File names will be constructed
+using --description, --dsconf, and other pieces of information
+according to the Mu2e convention
 http://mu2e.fnal.gov/atwork/computing/tapeUpload.shtml
 Note that the name of each file in the Mu2e data handling system must
-be unique. If --dsowner is not specified, the current username
-will be used.
+be unique. If --dsowner is not specified, the current username will be
+used.
 
 The --old-seeds option points to a text file with a list of seeds that
 should not be used in the current generation.  It is required in case
@@ -60,6 +63,14 @@ points to the files in the given filelist.  If numFiles is specified,
 only the given number of randomly selected files from the list are
 used, rather than the complete list.  The --fclinput option can be
 repeated several times, the effect is cumulative.
+
+By default, all the generated files are written into the current
+directory.  If the --split option is specified then fcl files will be
+put into subdirectories named 000 to 999, so they can be easily placed
+into the FTS input tree using tar.  The subdirectories will be created
+as needed.  The exact distribution of files among the subdirectories
+is controlled by the --split-start (defautl 0), --split-stride (default 1)
+and --split-batch-size (default 1000) parameters.
 
 The square brackets [] above denote optional settings, and
 {alternative1|alternative2} constructs denote mutually exclusive
@@ -315,7 +326,20 @@ sub addAuxInEpilogs($$) {
 # execution starts here
 my $defaultUser = getpwuid($EFFECTIVE_USER_ID);
 my @auxinputStrSpecs;
-my %opt = ('dsowner' =>  $defaultUser, 'auxinput' => \@auxinputStrSpecs, 'verbose' => 0, 'help' => 0);
+
+my $split = 0;
+my $split_start = 0;
+my $split_stride = 1;
+my $split_batch_size = 1000;
+
+my %opt = ('dsowner=s' =>  $defaultUser,
+           'auxinput' => \@auxinputStrSpecs,
+           'split' => \$split,
+           'split-start' => \$split_start,
+           'split-stride' => \$split_stride,
+           'split-batch-size' => \$split_batch_size,
+           'verbose' => 0,
+           'help' => 0);
 
 # Process command line opts.
 GetOptions(\%opt,
@@ -333,6 +357,10 @@ GetOptions(\%opt,
            'njobs=i',
            'old-seeds=s',
            'auxinput=s',
+           'split',
+           'split-start=i',
+           'split-stride=i',
+           'split-batch-size=i',
            'help',
            'verbose',
     )
@@ -492,6 +520,17 @@ my @emptySourceArgs = ('run-number', 'first-subrun', 'events-per-job', 'njobs');
 my @fileInputsArgs = ('inputs', 'merge-factor');
 
 #================================================================
+sub getSplitSubdirName($) {
+    my ($num)= @_;
+
+    my $subdir = $split ?
+        sprintf "%03d", ($split_start + $split_stride * int($num / $split_batch_size))  % 1000
+        : '.';
+
+    return $subdir;
+}
+
+#================================================================
 sub setOutputFileNames($$) {
     my ($fh, $seq) = @_;
 
@@ -548,7 +587,12 @@ if($srctype eq 'EmptyEvent') {
         my $run = $opt{'run-number'};
 
         my $seq = sprintf "%06i_%08i", $run, $subrun;
-        my $fn =  "cnf.$dsowner.$opt{description}.$dsconf.$seq.fcl";
+
+        my $subdir = getSplitSubdirName($i);
+        make_path($subdir);
+        die "Error creating directory $subdir: $!\n" unless -d $subdir;
+
+        my $fn =  "$subdir/cnf.$dsowner.$opt{description}.$dsconf.$seq.fcl";
 
         open( my $fh,  '>', $fn ) or die "error opening output file $fn: $!\n";
 
@@ -593,10 +637,16 @@ elsif($srctype eq 'RootInput') {
     my $inputSourceList = $opt{'inputs'};
     open(my $insrcfh, '<', $inputSourceList) or die "Can not open input file \"$inputSourceList\": $!\n";
 
+    my $num = 0;
     while(my @chunk = getNextInputListChunk($insrcfh, $opt{'merge-factor'})) {
 
         my $seq = extractASequencer(\@chunk);
-        my $fn =  "cnf.$dsowner.$opt{description}.$dsconf.$seq.fcl";
+
+        my $subdir = getSplitSubdirName($num++);
+        make_path($subdir);
+        die "Error creating directory $subdir: $!\n" unless -d $subdir;
+
+        my $fn =  "$subdir/cnf.$dsowner.$opt{description}.$dsconf.$seq.fcl";
 
         open( my $fh,  '>', $fn ) or die "error opening output file $fn: $!\n";
 
