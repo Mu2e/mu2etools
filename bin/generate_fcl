@@ -9,6 +9,7 @@ use File::Basename;
 use File::Copy;
 use File::Path qw/make_path/;
 use File::Temp qw/tempfile/;
+use File::stat;
 use English qw( -no_match_vars ) ; # Avoids regex performance penalty
 
 use Data::Dumper; # for debugging
@@ -41,6 +42,7 @@ Usage:
          [--auxinput=[numFiles:]<fclVarName>:<filelist>] \\
          [--split] \\
          [--split-start=<int> --split-stride=<int> --slit-batch-size=<int>] \\
+         [--generic-json]
          [--verbose] [--help] \\
          template-fcl-file
 
@@ -71,6 +73,11 @@ into the FTS input tree using tar.  The subdirectories will be created
 as needed.  The exact distribution of files among the subdirectories
 is controlled by the --split-start (defautl 0), --split-stride (default 1)
 and --split-batch-size (default 1000) parameters.
+
+For each fcl file a matching json file, suitable to upload the fcl
+file to the FTS, will be produced.  The --generic-json option switches
+off writing of individual json files.  Instead a single generic json
+file, suitable as in input to jsonMaker, will be produced.
 
 The square brackets [] above denote optional settings, and
 {alternative1|alternative2} constructs denote mutually exclusive
@@ -126,6 +133,19 @@ sub parseMu2eFileName($) {
         configuration=>$conf,
         sequencer=>$seq,
         extension=>$ext,
+        );
+}
+
+sub makeMu2eDatasetName($) {
+    my ($fields) = @_;
+
+    return join('.',
+                ($fields->tier,
+                 $fields->owner,
+                 $fields->description,
+                 $fields->configuration,
+                 ## $fields->sequencer,
+                 $fields->extension)
         );
 }
 
@@ -338,6 +358,7 @@ my %opt = ('dsowner=s' =>  $defaultUser,
            'split-start' => \$split_start,
            'split-stride' => \$split_stride,
            'split-batch-size' => \$split_batch_size,
+           'generic-json' => 0,
            'verbose' => 0,
            'help' => 0);
 
@@ -361,6 +382,7 @@ GetOptions(\%opt,
            'split-start=i',
            'split-stride=i',
            'split-batch-size=i',
+           'generic-json',
            'help',
            'verbose',
     )
@@ -531,6 +553,51 @@ sub getSplitSubdirName($) {
 }
 
 #================================================================
+sub writeSpecificJSON($) {
+    my ($fn) = @_;
+
+    my $fields = parseMu2eFileName($fn);
+
+    my $tier = $fields->tier;
+    my $dsowner = $fields->owner;
+    my $description = $fields->description;
+    my $dsconf = $fields->configuration;
+    my $seq = $fields->sequencer;
+
+    my $datasetname = makeMu2eDatasetName($fields);
+
+    my $st = stat($fn) or die "Can not stat() file $fn: $!\n";
+    my $filesize = $st->size;
+
+    my $filebase = basename($fn);
+
+    my $jfn = $fn . ".json";
+    open( my $json,  '>', $jfn ) or die "error opening output file $jfn: $!\n";
+
+    print $json <<EOF
+{
+    "content_status": "good",
+    "data_tier": "$tier",
+    "dh.configuration": "$dsconf",
+    "dh.dataset": "$datasetname",
+    "dh.description": "$description",
+    "dh.owner": "$dsowner",
+    "dh.sequencer": "$seq",
+    "file_format": "fcl",
+    "file_name": "$filebase",
+    "file_size": $filesize,
+    "file_type": "mc",
+    "mc.generator_type": "$generator_type",
+    "mc.simulation_stage": $simulation_stage,
+    "mc.primary_particle": "$primary_particle"
+}
+EOF
+    or die "Error printing to file $jfn: $!\n";
+
+    close($json) or die "Can not close file \"$jfn\": $!\n";
+}
+
+#================================================================
 sub setOutputFileNames($$) {
     my ($fh, $seq) = @_;
 
@@ -619,6 +686,10 @@ if($srctype eq 'EmptyEvent') {
 
         my $fcloutkeys = setOutputFileNames($fh, $seq);
         printCommonTrailer($fh, \@fclinkeys, $fcloutkeys);
+
+        close($fh) or die "Can not close file \"$fn\": $!\n";
+
+        writeSpecificJSON($fn) unless $opt{'generic-json'};
     }
 
 }
@@ -678,6 +749,8 @@ elsif($srctype eq 'RootInput') {
         printCommonTrailer($fh, \@fclinkeys, $fcloutkeys);
 
         close($fh) or die "Can not close file \"$fn\": $!\n";
+
+        writeSpecificJSON($fn) unless $opt{'generic-json'};
     }
 
 }
@@ -689,9 +762,10 @@ else {
 #================================================================
 # Produce a generic json file for upload of generated fcl files to SAM
 
-my $jsonfilename = "generic.$dsowner.$opt{description}.$dsconf.json";
-open( my $json,  '>', $jsonfilename ) or die "error opening output file $jsonfilename: $!\n";
-print $json <<EOF
+if($opt{'generic-json'}) {
+    my $jsonfilename = "generic.$dsowner.$opt{description}.$dsconf.json";
+    open( my $json,  '>', $jsonfilename ) or die "error opening output file $jsonfilename: $!\n";
+    print $json <<EOF
 {
     "mc.generator_type": "$generator_type",
     "mc.simulation_stage": $simulation_stage,
@@ -700,7 +774,8 @@ print $json <<EOF
 EOF
     or die "Error printing to json file: $!\n";
 
-close($json) or die "Can not close file \"$jsonfilename\": $!\n";
+    close($json) or die "Can not close file \"$jsonfilename\": $!\n";
+}
 
 #================================================================
 # Dump a list of all previously used seeds: the inputs list plus those
