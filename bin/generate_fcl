@@ -22,7 +22,14 @@ use Class::Struct Mu2eFileName =>
 # filenames is the content of that file
 # prolog==1 requests to place fcl defs in a BEGIN_PROLOG/END_PROLOG block.
 use Class::Struct Mu2eAuxInSpec =>
-    [numFilesPerJob=>'$', fclkey=>'$', prolog=>'$', filenames=>'*@', listFileName=>'$'];
+    [numFilesPerJob=>'$', fclkey=>'$', prolog=>'$', listFileName=>'$', filenames=>'*@',
+     # @rsr is a work area to keep "resampling refs": each element is a reference
+     # to an different entry in @filenames.  sampleFileNames() draws random
+     # refs from @rsr, and removes them from the array.  If there are not enough
+     # entries in @rsr to generate a set of filenames for the next fcl file,
+     # @rsr is reset to contain a complete set of @filenames refs again.
+     rsr=>'@'
+    ];
 
 #================================================================
 sub usage() {
@@ -233,20 +240,24 @@ sub sampleFileNames($) {
 
     my $res = [];
 
-    my %usedIndexes;
-
     if($spec->numFilesPerJob > 0) {
+
         die "--auxin requests too many files = ",$spec->numFilesPerJob,
         " for file list ",$spec->listFileName,"\n"
             unless $spec->numFilesPerJob < 1+$#{$spec->filenames};
 
-        for(my $i=0; $i<$spec->numFilesPerJob; ) {
-            my $index = int(rand($#{$spec->filenames}));
-            if(not defined $usedIndexes{$index}) {
-                push @$res, ${$spec->filenames}[$index];
-                $usedIndexes{$index} = 1;
-                ++$i;
+        # do we have enough entries left?
+        if(1+$#{$spec->rsr} < $spec->numFilesPerJob) {
+            # refill @rsr
+            for(my $i=0; $i<$#{$spec->filenames}; ++$i) {
+                push @{$spec->rsr}, $spec->filenames($i);
             }
+        }
+
+        for(my $i=0; $i<$spec->numFilesPerJob; ++$i) {
+            my $index = int(rand($#{$spec->rsr}));
+            push @$res, ${$spec->rsr($index)};
+            splice @{$spec->rsr}, $index, 1;
         }
     }
     else {
@@ -509,8 +520,8 @@ foreach my $str (@auxinputStrSpecs) {
         numFilesPerJob=>$numFiles,
         fclkey=>$var,
         prolog=>$prolog,
-        filenames=>\@auxfiles,
         listFileName=>$listfile,
+        filenames=>\@auxfiles,
         );
 
     push @auxin_specs, $spec;
