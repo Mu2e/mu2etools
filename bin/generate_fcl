@@ -244,12 +244,12 @@ sub sampleFileNames($) {
 
         die "--auxin requests too many files = ",$spec->numFilesPerJob,
         " for file list ",$spec->listFileName,"\n"
-            unless $spec->numFilesPerJob < 1+$#{$spec->filenames};
+            unless $spec->numFilesPerJob <= 1+@{$spec->filenames};
 
         # do we have enough entries left?
-        if(1+$#{$spec->rsr} < $spec->numFilesPerJob) {
+        if(@{$spec->rsr} <= $spec->numFilesPerJob) {
             # refill @rsr
-            for(my $i=0; $i<$#{$spec->filenames}; ++$i) {
+            for(my $i=0; $i<@{$spec->filenames}; ++$i) {
                 push @{$spec->rsr}, $spec->filenames($i);
             }
         }
