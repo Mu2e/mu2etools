@@ -12,10 +12,10 @@ use File::Temp qw/tempfile/;
 use File::stat;
 use English qw( -no_match_vars ) ; # Avoids regex performance penalty
 
-use Data::Dumper; # for debugging
+use lib dirname($0);
+use mu2etools qw/parseMu2eFileName makeMu2eDatasetName/;
 
-use Class::Struct Mu2eFileName =>
-    [tier=>'$', owner=>'$', description=>'$', configuration=>'$', sequencer=>'$', extension=>'$' ];
+use Data::Dumper; # for debugging
 
 # information from an --auxinput specification (same as mu2eart's --fclin spec)
 # listFileName is the name of the file specified on cmdline,
@@ -122,38 +122,6 @@ use constant outputfile_conf => 'MU2EGRIDDSCONF';
 sub doubleQuote($) {
     my ($fn) = @_;
     return  '"'.$fn.'"';
-}
-
-#================================================================
-sub parseMu2eFileName($) {
-    my ($fn) = @_;
-
-    my ($tier, $owner, $description, $conf, $seq, $ext, $extra) = split(/\./, basename($fn));
-
-    die "Error parsing Mu2e file name $fn: too many fields\n" if defined $extra;
-    die "Error parsing Mu2e file name $fn: too few fields\n" if not defined $ext;
-
-    return Mu2eFileName->new(
-        tier=>$tier,
-        owner=>$owner,
-        description=>$description,
-        configuration=>$conf,
-        sequencer=>$seq,
-        extension=>$ext,
-        );
-}
-
-sub makeMu2eDatasetName($) {
-    my ($fields) = @_;
-
-    return join('.',
-                ($fields->tier,
-                 $fields->owner,
-                 $fields->description,
-                 $fields->configuration,
-                 ## $fields->sequencer,
-                 $fields->extension)
-        );
 }
 
 #================================================================
