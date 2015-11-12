@@ -17,47 +17,18 @@ use Digest;
 use lib dirname($0);
 use mu2etools;
 
-my $dataroot = "/pnfs/mu2e/persistent/projects/production/data";
 my $verbosity=1;
 my $dryrun=0;
-my %opt = ( dataroot=>\$dataroot, verbosity=>\$verbosity, 'dry-run'=>\$dryrun, help=>0 );
+my %opt = ( dataroot=>\$mu2etools::dataroot, verbosity=>\$verbosity, 'dry-run'=>\$dryrun, help=>0 );
 
 # stat counters for the processing
 my $numCopied = 0;
 my $numSkipped = 0;
 
 #================================================================
-sub stdPathName($) {
-    my ($filename) = @_;
-    die "stdPathName(): arg should be a base name of a file without a path.  Got: $filename\n"
-        if $filename =~ m|/|;
-
-    # the "spreader" directory names are based on SHA256
-    my $dig = Digest->new('SHA-256');
-    $dig->add($filename);
-    my $hash = $dig->hexdigest;
-    my @hh = split //, $hash, 7;
-
-    my $fn = mu2etools::parseMu2eFileName($filename);
-
-    my $stdpath = $dataroot
-        . '/' . $fn->tier
-        . '/' . $fn->owner
-        . '/' . $fn->description
-        . '/' . $fn->configuration
-        . '/' . $hh[0] . $hh[1]
-        . '/' . $hh[2] . $hh[3]
-        . '/' . $hh[4] . $hh[5]
-        . '/' . $filename
-        ;
-
-    return $stdpath;
-}
-
-#================================================================
 sub processFile($) {
     my ($infile) = @_;
-    my $stdpath = stdPathName(basename($infile));
+    my $stdpath = mu2etools::stdPathName(basename($infile));
 
     if(-e $stdpath) {
         ++$numSkipped;
@@ -85,7 +56,7 @@ sub processFile($) {
 
             my $t2 = time();
 
-            if($t2-$t1 > 10) {
+            if(($verbosity > 0) && ($t2-$t1 > 10)) {
                 my $datarate = $st->size/1024./1024./($t2 - $t1);
                 print "\t$datarate MB/s\n";
             }
