@@ -6,17 +6,18 @@ parent mu2etools v1_00_06
 # this product has no include or lib directories
 incdir      -
 libdir      -
-bindir      product_dir	bin
+bindir      product_dir bin
 # The no_fq_dir keyword indicates that this product is NULL flavored
 no_fq_dir
 
 #
-product		version
-mu2ebintools	-
-cetbuildtools    v4_07_03 - only_for_build
+product         version
+mu2ebintools    -
+mu2efilename    v0_1
+cetbuildtools   v4_07_03 - only_for_build
 end_product_list
 
-qualifier	mu2ebintools
--nq-		e7:prof
-e7:prof		e7:prof
+qualifier       mu2ebintools    mu2efilename
+-nq-            e7:prof         -nq-
+e7:prof         e7:prof         -nq-
 end_qualifier_list

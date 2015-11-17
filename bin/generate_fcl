@@ -12,8 +12,7 @@ use File::Temp qw/tempfile/;
 use File::stat;
 use English qw( -no_match_vars ) ; # Avoids regex performance penalty
 
-use lib dirname($0);
-use mu2etools qw/parseMu2eFileName makeMu2eDatasetName/;
+use Mu2eFilename;
 
 use Data::Dumper; # for debugging
 
@@ -135,28 +134,6 @@ sub checkParameterValues($$) {
     }
 }
 
-sub makeNtsFileName($$) {
-    my ($template, $newseq) = @_;
-    my $fn = parseMu2eFileName($template);
-
-    die "Error parsing histo file name $template: expect extension .root\n" unless $fn->extension eq 'root';
-    die "Error parsing histo file name $template: expect data tier nts\n" unless $fn->tier eq 'nts';
-
-    return join('.', ('nts', outputfile_owner, $fn->description, outputfile_conf, $newseq, 'root') );
-}
-
-sub makeArtFileName($$) {
-    my ($template, $newseq) = @_;
-
-    my $fn = parseMu2eFileName($template);
-
-    die "Error parsing histo file name $template: expect extension .art\n" unless $fn->extension eq 'art';
-    die "Error parsing art file name $template: unknown data tier ",$fn->tier,"\n"
-        unless grep( m'^'.$fn->tier.'$', ('sim', 'mix', 'dig', 'mcs') );
-
-    return join('.', ($fn->tier, outputfile_owner, $fn->description, outputfile_conf, $newseq, 'art') );
-}
-
 #================================================================
 sub addEventID($$$$) {
     my ($fh, $run, $subrun, $maxEvents) = @_;
@@ -259,7 +236,7 @@ sub extractASequencer($) {
 
     my @seqs;
     foreach my $fn (@$fnlist) {
-        my  $p = parseMu2eFileName($fn);
+        my  $p = Mu2eFilename->parse($fn);
         push @seqs,$p->sequencer;
     }
 
@@ -397,9 +374,15 @@ print "Got srctype = $srctype\n" if $verbose;
 
 # optional TFileService output
 my $ntscmd = "fhicl-getpar --string ".fclkey_TFileServiceFN." $templatefile 2>/dev/null";
-my $ntsout = `$ntscmd`;
-chomp $ntsout;
-print "Got ntsout = $ntsout\n" if $verbose;
+my $ntsoutstr = `$ntscmd`;
+chomp $ntsoutstr;
+print "Got ntsoutstr = $ntsoutstr\n" if $verbose;
+my $ntsfn = Mu2eFilename->parse($ntsoutstr);
+die "Bad histo file name $ntsoutstr: expect extension .root\n" unless $ntsfn->extension eq 'root';
+die "Bad histo file name $ntsoutstr: expect data tier nts\n" unless $ntsfn->tier eq 'nts';
+$ntsfn->owner(outputfile_owner);
+$ntsfn->configuration(outputfile_conf);
+
 
 # optional .art output files
 my @outmods = `fhicl-getpar --keys outputs $templatefile 2>/dev/null`;
@@ -412,9 +395,13 @@ foreach my $mod (@outmods) {
     if($?) {
         die "Error: no fileName for outputs.$mod\n";
     }
-    chomp $outfile;;
-    $fwout{$mod} = $outfile;
+    chomp $outfile;
     print "$mod => $outfile\n" if $verbose;
+    my $fn = Mu2eFilename->parse($outfile);
+    die "Bad output file name $outfile: expect extension .art\n" unless $fn->extension eq 'art';
+    $fn->owner(outputfile_owner);
+    $fn->configuration(outputfile_conf);
+    $fwout{$mod} = $fn;
 }
 
 # Determine whether SeedService is present: should we generate random seeds?
@@ -472,8 +459,9 @@ foreach my $str (@auxinputStrSpecs) {
             unless $line =~ /^\p{IsGraph}+$/;
 
         # Must be a Mu2e file name, as it will become an parent in the
-        # provenance record of our output datasets.
-        parseMu2eFileName($line);
+        # provenance record of our output datasets. Check that it
+        # satisfies the conventions.
+        Mu2eFilename->parse(basename($line));
 
         push @auxfiles, $line;
     }
@@ -535,15 +523,14 @@ sub getSplitSubdirName($) {
 sub writeSpecificJSON($) {
     my ($fn) = @_;
 
-    my $fields = parseMu2eFileName($fn);
+    my $fields = Mu2eFilename->parse(basename($fn));
 
     my $tier = $fields->tier;
     my $dsowner = $fields->owner;
     my $description = $fields->description;
     my $dsconf = $fields->configuration;
     my $seq = $fields->sequencer;
-
-    my $datasetname = makeMu2eDatasetName($fields);
+    my $datasetname = $fields->dataset;
 
     my $st = stat($fn) or die "Can not stat() file $fn: $!\n";
     my $filesize = $st->size;
@@ -582,8 +569,9 @@ sub setOutputFileNames($$) {
 
     my @fcloutkeys; # fcl keys for all output file name
 
-    my $histval = makeNtsFileName($ntsout, $seq);
-    print $fh  fclkey_TFileServiceFN .": \"$histval\"\n"
+    $ntsfn->sequencer($seq);
+    my $histval = doubleQuote($ntsfn->basename);
+    print $fh  fclkey_TFileServiceFN .": $histval\n"
         or die "setOutputFileNames(): error printing to output file: $!\n";
 
     push @fcloutkeys, fclkey_TFileServiceFN
@@ -591,7 +579,9 @@ sub setOutputFileNames($$) {
 
     foreach my $mod (@outmods) {
         my $artkey = sprintf fclkey_outModFMT, $mod;
-        my $artval = doubleQuote(makeArtFileName($fwout{$mod}, $seq));
+        $fwout{$mod}->sequencer($seq);
+        my $afn = $fwout{$mod}->basename;
+        my $artval = doubleQuote($afn);
         print $fh  "$artkey : $artval\n"
             or die "setOutputFileNames(): error printing to output file: $!\n";
         push @fcloutkeys, $artkey;
