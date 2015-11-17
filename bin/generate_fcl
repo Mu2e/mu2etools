@@ -48,7 +48,8 @@ Usage:
          [--auxinput=[numFiles:]<fclVarName>:<filelist>] \\
          [--split] \\
          [--split-start=<int> --split-stride=<int> --slit-batch-size=<int>] \\
-         [--generic-json]
+         [--generic-json] \\
+         [--debug-seed=<int>] \\
          [--verbose] [--help] \\
          template-fcl-file
 
@@ -84,6 +85,10 @@ For each fcl file a matching json file, suitable to upload the fcl
 file to the FTS, will be produced.  The --generic-json option switches
 off writing of individual json files.  Instead a single generic json
 file, suitable as in input to jsonMaker, will be produced.
+
+The --debug-seed option is used to develop the generate_fcl script
+itself.  It allows to obtain a reproducible sequence of pseudorandom
+numbers used in the code.
 
 The square brackets [] above denote optional settings, and
 {alternative1|alternative2} constructs denote mutually exclusive
@@ -155,16 +160,9 @@ sub addRandomSeed($$) {
     # need to account for maxUniqueEngines.
     my $seedlimit= 900000000 - $maxUniqueEngines + 1;
 
-    open(my $rndfh, '<', '/dev/urandom') or die "Error opening input file /dev/urandom: $!\n";
-
     my $seed=0;
     while(!$seed) {
-        my $recsize = 4; # bytes
-        my $binseed = 0;
-        read($rndfh, $binseed, $recsize) == $recsize or die "Error reading from /dev/urandom: $!\n";
-        my $inseed = unpack '%32L', $binseed;
-        $seed = $inseed % $seedlimit;
-
+        $seed = rand($seedlimit);
         if($$usedSeeds{$seed}) {
             print STDERR "Skipping old seed $seed\n";
             redo;
@@ -339,6 +337,7 @@ GetOptions(\%opt,
            'split-stride=i',
            'split-batch-size=i',
            'generic-json',
+           'debug-seed=i',
            'help',
            'verbose',
     )
@@ -352,6 +351,10 @@ if($opt{'help'}) {
 my $verbose = $opt{'verbose'};
 print "Final set of options:\n", Dumper( \%opt ), "\n"
     if($verbose);
+
+if(defined $opt{'debug-seed'}) {
+    srand($opt{'debug-seed'});
+}
 
 die "A single non-option arg must specify a template file. Try the --help option.\n"
     unless $#ARGV == 0;
