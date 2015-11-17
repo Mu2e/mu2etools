@@ -63,9 +63,9 @@ used.
 
 The --old-seeds option points to a text file with a list of seeds that
 should not be used in the current generation.  It is required in case
-the fcl file defines services.user.SeedService.  Normally this file
-will contain a list of seeds in already existing subruns of this
-dataset.  One can specify /dev/null for the initial generation.
+the fcl file defines the SeedService.  Normally this file will contain
+a list of seeds in already existing subruns of this dataset.  One can
+specify /dev/null for the initial generation.
 
 The --auxinput option sets the given fcl file variable so that it
 points to the files in the given filelist.  If numFiles is specified,
@@ -115,7 +115,9 @@ EOF
 #================================================================
 # constant strings used in more than one place
 
-use constant fclkey_SeedService => 'services.user.SeedService';
+use constant fclkey_SeedService => ( 'services.user.SeedService', 'services.SeedService');
+my $seedServiceKey = ''; # will be determined from the input fcl file
+
 use constant fclkey_TFileServiceFN => 'services.TFileService.fileName';
 use constant fclkey_outModFMT => 'outputs.%s.fileName';
 
@@ -171,9 +173,9 @@ sub addRandomSeed($$) {
     $$usedSeeds{$seed} = 1;
 
     print $fh
-        fclkey_SeedService . ".policy:  autoIncrement\n",
-        fclkey_SeedService . ".maxUniqueEngines: $maxUniqueEngines\n",
-        fclkey_SeedService . ".baseSeed: $seed\n"
+        $seedServiceKey . ".policy:  autoIncrement\n",
+        $seedServiceKey . ".maxUniqueEngines: $maxUniqueEngines\n",
+        $seedServiceKey . ".baseSeed: $seed\n"
         or die "Error printing to output file: $!\n";
 }
 
@@ -408,13 +410,19 @@ foreach my $mod (@outmods) {
 }
 
 # Determine whether SeedService is present: should we generate random seeds?
-my $seedcmd = "fhicl-getpar --keys ".fclkey_SeedService." $templatefile 2>/dev/null";
-my @seedout = `$seedcmd`; chomp @seedout;
-my $needRandomSeeds = $? ? 0 : 1;
-print "needRandomSeeds = $needRandomSeeds because got @seedout\n" if $verbose;
+foreach my $ss (fclkey_SeedService) {
+    next unless $ss;
+    my $seedcmd = "fhicl-getpar --keys $ss $templatefile 2>/dev/null";
+    my @seedout = `$seedcmd`; chomp @seedout;
+    if(@seedout) {
+        $seedServiceKey = $ss;
+        print "Will use seedServiceKey = $seedServiceKey: got @seedout from the query\n" if $verbose;
+        last;
+    }
+}
 
 my %usedSeeds;
-if($needRandomSeeds) {
+if($seedServiceKey) {
     die "A list of random seeds from existing subruns of this dataset must be specified with --old-seeds.\n"
         ."Use an empty file for the initial run.\n"
         unless defined $opt{'old-seeds'};
@@ -428,7 +436,7 @@ if($needRandomSeeds) {
     }
 }
 elsif(defined $opt{'old-seeds'}) {
-    die "Error: the --old-seeds option will not have any effect because fcl config does not use " . fclkey_SeedService . "\n";
+    die "Error: the --old-seeds option will not have any effect because fcl config does not use the SeedService\n";
 }
 
 #----------------
@@ -650,7 +658,7 @@ if($srctype eq 'EmptyEvent') {
             or die "Error printing to output file: $!\n";
 
         addEventID($fh, $run, $subrun, $opt{'events-per-job'});
-        addRandomSeed($fh, \%usedSeeds) if $needRandomSeeds;
+        addRandomSeed($fh, \%usedSeeds) if $seedServiceKey;
 
         my @fclinkeys;
         push @fclinkeys, generateKeysForLocals($fh, \@auxin_specs);
@@ -707,7 +715,7 @@ elsif($srctype eq 'RootInput') {
             "# Code added by generate_fcl:\n"
             or die "Error printing to output file: $!\n";
 
-        addRandomSeed($fh, \%usedSeeds) if $needRandomSeeds;
+        addRandomSeed($fh, \%usedSeeds) if $seedServiceKey;
 
         my @fclinkeys;
 
