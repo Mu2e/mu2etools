@@ -9,7 +9,6 @@ use File::Basename;
 use File::Copy;
 use File::Path qw/make_path/;
 use File::Temp qw/tempfile/;
-use File::stat;
 use English qw( -no_match_vars ) ; # Avoids regex performance penalty
 
 use Mu2eFilename;
@@ -525,8 +524,11 @@ sub getSplitSubdirName($) {
 }
 
 #================================================================
-sub writeSpecificJSON($) {
-    my ($fn) = @_;
+# some generated fcl files are large ( O(100K) ).
+# pass their content by reference for efficiency, not because
+# this function modifies it.
+sub writeSpecificJSON($$) {
+    my ($fn,$fb) = @_;
 
     my $fields = Mu2eFilename->parse(basename($fn));
 
@@ -537,8 +539,7 @@ sub writeSpecificJSON($) {
     my $seq = $fields->sequencer;
     my $datasetname = $fields->dataset;
 
-    my $st = stat($fn) or die "Can not stat() file $fn: $!\n";
-    my $filesize = $st->size;
+    my $filesize = length($$fb);
 
     my $filebase = basename($fn);
 
@@ -658,7 +659,7 @@ if($srctype eq 'EmptyEvent') {
         print $fh $fclfb or die "Error printing to fcl file \"$fn\": $!\n";
         close($fh) or die "Can not close file \"$fn\": $!\n";
 
-        writeSpecificJSON($fn) unless $opt{'generic-json'};
+        writeSpecificJSON($fn, \$fclfb) unless $opt{'generic-json'};
     }
 
 }
@@ -719,7 +720,7 @@ elsif($srctype eq 'RootInput') {
         print $fh $fclfb or die "Error printing to fcl file \"$fn\": $!\n";
         close($fh) or die "Can not close file \"$fn\": $!\n";
 
-        writeSpecificJSON($fn) unless $opt{'generic-json'};
+        writeSpecificJSON($fn, \$fclfb) unless $opt{'generic-json'};
     }
 
 }
