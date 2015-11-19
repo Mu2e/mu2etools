@@ -234,7 +234,7 @@ sub extractASequencer($) {
 
     my @seqs;
     foreach my $fn (@$fnlist) {
-        my  $p = Mu2eFilename->parse($fn);
+        my  $p = Mu2eFilename->parse(basename($fn));
         push @seqs,$p->sequencer;
     }
 
