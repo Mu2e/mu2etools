@@ -18,6 +18,7 @@ cetbuildtools   v4_07_03 - only_for_build
 end_product_list
 
 qualifier       mu2ebintools    mu2efilename
--nq-            e7:prof         -nq-
+-nq-            e9:prof         -nq-
 e7:prof         e7:prof         -nq-
+e9:prof         e9:prof         -nq-
 end_qualifier_list
