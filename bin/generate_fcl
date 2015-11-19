@@ -5,6 +5,7 @@
 
 use autodie;
 use Getopt::Long;
+use Digest;
 use File::Basename;
 use File::Copy;
 use File::Path qw/make_path/;
@@ -540,8 +541,11 @@ sub writeSpecificJSON($$) {
     my $datasetname = $fields->dataset;
 
     my $filesize = length($$fb);
-
     my $filebase = basename($fn);
+
+    my $dig = Digest->new('SHA-256');
+    $dig->add($$fb);
+    my $sha256 = $dig->hexdigest;
 
     my $jfn = $fn . ".json";
     open( my $json,  '>', $jfn ) or die "error opening output file $jfn: $!\n";
@@ -555,6 +559,7 @@ sub writeSpecificJSON($$) {
     "dh.description": "$description",
     "dh.owner": "$dsowner",
     "dh.sequencer": "$seq",
+    "dh.sha256": "$sha256",
     "file_format": "fcl",
     "file_name": "$filebase",
     "file_size": $filesize,
