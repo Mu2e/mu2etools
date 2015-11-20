@@ -163,7 +163,7 @@ sub addRandomSeed($$) {
 
     my $seed=0;
     while(!$seed) {
-        $seed = rand($seedlimit);
+        $seed = int(rand($seedlimit));
         if($$usedSeeds{$seed}) {
             print STDERR "Skipping old seed $seed\n";
             redo;
