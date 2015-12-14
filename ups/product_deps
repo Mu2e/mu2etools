@@ -13,7 +13,7 @@ no_fq_dir
 #
 product         version
 mu2ebintools    -
-mu2efilename    v0_2
+mu2efilename    v1_0
 cetbuildtools   v4_07_03 - only_for_build
 end_product_list
 
