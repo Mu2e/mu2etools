@@ -377,12 +377,14 @@ my $ntscmd = "fhicl-getpar --string ".fclkey_TFileServiceFN." $templatefile 2>/d
 my $ntsoutstr = `$ntscmd`;
 chomp $ntsoutstr;
 print "Got ntsoutstr = $ntsoutstr\n" if $verbose;
-my $ntsfn = Mu2eFilename->parse($ntsoutstr);
-die "Bad histo file name $ntsoutstr: expect extension .root\n" unless $ntsfn->extension eq 'root';
-die "Bad histo file name $ntsoutstr: expect data tier nts\n" unless $ntsfn->tier eq 'nts';
-$ntsfn->owner(outputfile_owner);
-$ntsfn->configuration(outputfile_conf);
-
+my $ntsfn;
+if($ntsoutstr ne '') {
+    $ntsfn = Mu2eFilename->parse($ntsoutstr);
+    die "Bad histo file name $ntsoutstr: expect extension .root\n" unless $ntsfn->extension eq 'root';
+    die "Bad histo file name $ntsoutstr: expect data tier nts\n" unless $ntsfn->tier eq 'nts';
+    $ntsfn->owner(outputfile_owner);
+    $ntsfn->configuration(outputfile_conf);
+}
 
 # optional .art output files
 my @outmods = `fhicl-getpar --keys outputs $templatefile 2>/dev/null`;
@@ -587,10 +589,12 @@ sub setOutputFileNames($$) {
 
     my @fcloutkeys; # fcl keys for all output file name
 
-    $ntsfn->sequencer($seq);
-    my $histval = doubleQuote($ntsfn->basename);
-    $$fb .= fclkey_TFileServiceFN .": $histval\n";
-    push @fcloutkeys, fclkey_TFileServiceFN;
+    if(defined $ntsfn) {
+        $ntsfn->sequencer($seq);
+        my $histval = doubleQuote($ntsfn->basename);
+        $$fb .= fclkey_TFileServiceFN .": $histval\n";
+        push @fcloutkeys, fclkey_TFileServiceFN;
+    }
 
     foreach my $mod (@outmods) {
         my $artkey = sprintf fclkey_outModFMT, $mod;
