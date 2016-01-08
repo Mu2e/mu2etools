@@ -46,7 +46,7 @@ Usage:
            --events-per-job=<int> --njobs=<int> }\\
          [--old-seeds=<seeds-file-name>] \\
          [--auxinput=[numFiles:]<fclVarName>:<filelist>] \\
-         [--split] \\
+         [--[no]split] \\
          [--split-start=<int> --split-stride=<int> --slit-batch-size=<int>] \\
          [--generic-json] \\
          [--debug-seed=<int>] \\
@@ -73,13 +73,14 @@ only the given number of randomly selected files from the list are
 used, rather than the complete list.  The --fclinput option can be
 repeated several times, the effect is cumulative.
 
-By default, all the generated files are written into the current
-directory.  If the --split option is specified then fcl files will be
-put into subdirectories named 000 to 999, so they can be easily placed
-into the FTS input tree using tar.  The subdirectories will be created
-as needed.  The exact distribution of files among the subdirectories
-is controlled by the --split-start (defautl 0), --split-stride (default 1)
-and --split-batch-size (default 1000) parameters.
+With the --nosplit options all the generated files will written into
+the current directory.  With the --split option (the default) fcl and
+json files will be put into subdirectories named 000 to 999, so they
+can be easily placed into the FTS input tree using tar.  The
+subdirectories will be created as needed.  The exact distribution of
+files among the subdirectories is controlled by the --split-start
+(defautl 0), --split-stride (default 1) and --split-batch-size
+(default 1000) parameters.
 
 For each fcl file a matching json file, suitable to upload the fcl
 file to the FTS, will be produced.  The --generic-json option switches
@@ -298,7 +299,7 @@ sub addAuxInEpilogs($$$) {
 my $defaultUser = getpwuid($EFFECTIVE_USER_ID);
 my @auxinputStrSpecs;
 
-my $split = 0;
+my $split = 1;
 my $split_start = 0;
 my $split_stride = 1;
 my $split_batch_size = 1000;
@@ -329,7 +330,7 @@ GetOptions(\%opt,
            'njobs=i',
            'old-seeds=s',
            'auxinput=s',
-           'split',
+           'split!',
            'split-start=i',
            'split-stride=i',
            'split-batch-size=i',
