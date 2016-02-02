@@ -1,0 +1,26 @@
+Make a new product tarball
+
+   ver=v2_01_00
+   git archive --prefix=mu2etools/$ver/ --output=../mu2etools-$ver.tgz ${ver:?version not set}
+
+Install the product
+
+   ver=v2_01_00
+   cd artexternals
+   tar xvf /path/mu2etools-$ver.tgz
+   ups declare mu2etools $ver -r mu2etools/$ver -f NULL -m mu2etools.table
+
+A complete example of CVMFS installation
+
+   ssh cvmfsmu2e@oasiscfs02.fnal.gov
+   cvmfs_server transaction mu2e.opensciencegrid.org
+   cd /cvmfs/mu2e.opensciencegrid.org/artexternals
+   export prod_db=`pwd`
+   source ./setup
+   ver=v2_01_00
+   tar xvf /grid/fermiapp/mu2e/users/gandr/dev/mu2etools-$ver.tgz
+   ups list -aK+ mu2etools
+   ups declare mu2etools $ver -r mu2etools/$ver -f NULL -m mu2etools.table
+   ups list -aK+ mu2etools
+   cd
+   cvmfs_server publish mu2e.opensciencegrid.org

@@ -1,0 +1,20 @@
+FILE=table
+Product=mu2etools
+
+Flavor=ANY
+Qualifiers=""
+
+Action=setup
+    prodDir()
+    setupEnv()
+    setupRequired( mu2efilename v2_1 )
+
+    # this does not work:
+    #
+    #    setupRequired( mu2ebintools -q ${MU2E_UPS_QUALIFIERS} )
+    #
+    # so we source a shell script to set up the dependency instead
+
+    sourceReqCheck(${UPS_PROD_DIR}/ups/customSetup.sh, NO_UPS_ENV)
+
+    pathPrepend(PATH, ${UPS_PROD_DIR}/bin)

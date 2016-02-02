@@ -1,0 +1,8 @@
+This package provides the generate_fcl script.  It depends on the
+mu2ebintools package, and requires an appropriate FHICL_FILE_PATH to
+be set (which is usually accomplished by setting up Mu2e Offline).
+Because of those dependencies the script lives in a separate package
+and not in e.g. mu2efiletools.
+
+Source Offline/setup.sh, or export MU2E_UPS_QUALIFIERS by hand prior
+to "setup mu2etools".
