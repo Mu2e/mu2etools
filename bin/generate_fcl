@@ -542,7 +542,7 @@ sub writeSpecificJSON($$$) {
     my $description = $fields->description;
     my $dsconf = $fields->configuration;
     my $seq = $fields->sequencer;
-    my $datasetname = $fields->dataset;
+    my $datasetname = $fields->dataset->dsname;
 
     my $filesize = length($$fb);
     my $filebase = basename($fn);
