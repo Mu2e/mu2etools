@@ -7,7 +7,7 @@ Qualifiers=""
 Action=setup
     prodDir()
     setupEnv()
-    setupRequired( mu2efilename v2_1 )
+    setupRequired( mu2efilename )
 
     # this does not work:
     #
