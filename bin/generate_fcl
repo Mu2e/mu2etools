@@ -71,7 +71,15 @@ The --auxinput option sets the given fcl file variable so that it
 points to the files in the given filelist.  If numFiles is specified,
 only the given number of randomly selected files from the list are
 used, rather than the complete list.  The --fclinput option can be
-repeated several times, the effect is cumulative.
+repeated several times, the effect is cumulative.  If fclVarName
+starts with the '\@' sign, it will generate a BEGIN_PROLOG/END_PROLOG
+block with a fclVarName definition, which should be referred to using
+the \@local::fclVarName syntax in the template fcl file.  Prolog
+definitions use the \@protect_ignore: FHiCL bindings, therefore take
+precedence over any subsequent re-definitions of the same variable in
+the template file.  If the variable name does not start with the '\@'
+sign, an assignment to that variable will be appended to the user fcl
+file.
 
 With the --nosplit options all the generated files will written into
 the current directory.  With the --split option (the default) fcl and
@@ -99,19 +107,6 @@ thing.)
 
 EOF
 }
-
-#notimpl: The --auxinput option sets the given fcl file variable so that it
-#notimpl: points to the files in the given filelist.  If numFiles is specified,
-#notimpl: only the given number of randomly selected files from the list are
-#notimpl: used, rather than the complete list.  The --fclinput option can be
-#notimpl: repeated several times, the effect is cumulative.  If fclVarName
-#notimpl: starts with the '\@' sign, it will generate a BEGIN_PROLOG/END_PROLOG
-#notimpl: block with a fclVarName definition, which should be referred to using
-#notimpl: the \@local::fclVarName syntax in the template fcl file.  If the
-#notimpl: variable name does not start with the '\@' sign, an assignment to that
-#notimpl: variable will be appended to the user fcl file.
-
-
 
 #================================================================
 # constant strings used in more than one place
@@ -242,9 +237,9 @@ sub extractASequencer($) {
     return (sort @seqs)[0];
 }
 #================================================================
-sub addInputFileNames($$$$) {
-    my ($fb, $fclkey, $listref, $parentref) = @_;
-    $$fb .= "$fclkey: [\n" . join(",\n", map  { doubleQuote($_) } @$listref ) . "\n]\n";
+sub addInputFileNames($$$$$) {
+    my ($fb, $fclkey,$fclbind, $listref, $parentref) = @_;
+    $$fb .= "$fclkey $fclbind [\n" . join(",\n", map  { doubleQuote($_) } @$listref ) . "\n]\n";
     push @$parentref, map  { basename($_) } @$listref;
     return $fclkey;
 }
@@ -253,14 +248,16 @@ sub addInputFileNames($$$$) {
 sub addAuxInPrologs($$$) {
     my ($fb, $specs, $parentref) = @_;
 
+    my @fclinkeys;
     foreach my $ai (@$specs) {
         if($ai->prolog) {
             my $sample = sampleFileNames($ai);
             $$fb .= "BEGIN_PROLOG  # by generate_fcl\n";
-            addInputFileNames($fb, $ai->fclkey, $sample, $parentref);
+            push @fclinkeys, addInputFileNames($fb, $ai->fclkey, '@protect_ignore:', $sample, $parentref);
             $$fb .= "END_PROLOG  # by generate_fcl\n\n";
         }
     }
+    return @fclinkeys;
 }
 #================================================================
 # fhicl-getpar allows worker node script to query parameter values.
@@ -288,7 +285,7 @@ sub addAuxInEpilogs($$$) {
     foreach my $ai (@$specs) {
         if(!$ai->prolog) {
             my $sample = sampleFileNames($ai);
-            push @fclinkeys, addInputFileNames($fb, $ai->fclkey, $sample, $parentref);
+            push @fclinkeys, addInputFileNames($fb, $ai->fclkey, ':', $sample, $parentref);
         }
     }
     return @fclinkeys;
@@ -477,9 +474,6 @@ foreach my $str (@auxinputStrSpecs) {
 
     my $prolog = 0;
     $prolog = 1 if($var =~ s/^\@// );
-
-    die "File lists in \@local fhicl variables are not supported by worker node scripts.\n"
-        if $prolog;
 
     my $spec = Mu2eAuxInSpec->new(
         numFilesPerJob=>$numFiles,
@@ -727,7 +721,7 @@ elsif($srctype eq 'RootInput') {
         my @fclinkeys;
 
         # Set input file names
-        push @fclinkeys, addInputFileNames(\$fclfb, "source.fileNames", \@chunk, \@parents);
+        push @fclinkeys, addInputFileNames(\$fclfb, "source.fileNames", ':', \@chunk, \@parents);
 
         push @fclinkeys, generateKeysForLocals(\$fclfb, \@auxin_specs);
         push @fclinkeys, addAuxInEpilogs(\$fclfb, \@auxin_specs, \@parents);
