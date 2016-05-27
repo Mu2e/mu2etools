@@ -5,7 +5,7 @@
 # Andrei Gaponenko, 2016
 
 if [[ -n "${MU2E_UPS_QUALIFIERS}" ]]; then
-    setup mu2ebintools -q ${MU2E_UPS_QUALIFIERS}
+    setup -B mu2ebintools -q ${MU2E_UPS_QUALIFIERS}
     return 0;
 else
     cat >&2 <<EOF
