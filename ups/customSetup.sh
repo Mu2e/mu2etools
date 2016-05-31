@@ -9,17 +9,44 @@ if [[ -n "${MU2EBINTOOLS_VERSION}" ]]; then
     return 0
 fi
 
-if [[ -n "${MU2E_UPS_QUALIFIERS}" ]]; then
-    setup -B mu2ebintools -q ${MU2E_UPS_QUALIFIERS}
-    return 0;
-else
+if [[ -z "${MU2E_UPS_QUALIFIERS}" ]]; then
     cat >&2 <<EOF
 Error: MU2E_UPS_QUALIFIERS environment variable is not set.
 It is needed for setting up the mu2ebintools package.
-Source Offline/setup.sh, or export MU2E_UPS_QUALIFIERS by hand prior to doing "setup mu2etools".
+Source Offline/setup.sh prior to doing "setup mu2etools".
 
 Alternatively, you can setup a correct version of mu2ebintools
 before setting up mu2etools.
 EOF
     return 1;
 fi
+
+if [[ -z "${FHICLCPP_VERSION}" ]]; then
+    cat >&2 <<EOF
+Error: FHICLCPP_VERSION environment variable is not set.
+It is needed for setting up the mu2ebintools package.
+Source Offline/setup.sh prior to doing "setup mu2etools".
+
+Alternatively, you can setup a correct version of mu2ebintools
+before setting up mu2etools.
+EOF
+    return 1;
+fi
+
+
+# the default is emtpy version, which will
+# cause UPS to set up the "current" version of the package
+VER=
+case "${FHICLCPP_VERSION}" in
+    v3_03_00) VER=v1_00_00;;
+    v3_06_01) VER=v1_00_01;;
+    v3_12_06) VER=v1_01_02;;
+    v3_12_09) VER=v1_01_03;;
+
+    *)
+        # leave it empty - may be "current" is the correct answer
+        # for the given set of qualifiers
+        ;;
+esac
+
+setup -B mu2ebintools $VER -q ${MU2E_UPS_QUALIFIERS}
