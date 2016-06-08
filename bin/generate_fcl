@@ -269,7 +269,7 @@ sub generateKeysForLocals($$) {
     my @fclkeys;
     foreach my $ai (@$specs) {
         if($ai->prolog) {
-            my $key = 'mu2emetadata.fcl.inkey_values.' . $ai->fclkey;
+            my $key = 'mu2emetadata.fcl.prolog_values.' . $ai->fclkey;
             $$fb .= $key . ': @local::' . $ai->fclkey . "\n";
             push @fclkeys, $key;
         }
@@ -604,13 +604,14 @@ sub setOutputFileNames($$) {
 }
 #----------------------------------------------------------------
 # Generated part common to EmptySource and RootInput cases
-sub printCommonTrailer($$$) {
-    my ($fb, $fclinkeys, $fcloutkeys) = @_;
+sub printCommonTrailer($$$$) {
+    my ($fb, $fclprologkeys, $fclinkeys, $fcloutkeys) = @_;
 
     $$fb .=
         "mu2emetadata.mc.generator_type: \"$generator_type\"\n".
         "mu2emetadata.mc.simulation_stage: $simulation_stage\n".
         "mu2emetadata.mc.primary_particle: \"$primary_particle\"\n".
+        "mu2emetadata.fcl.prologkeys: [ ". join(", ", map  { doubleQuote($_) } @$fclprologkeys )." ]\n".
         "mu2emetadata.fcl.inkeys: [ ". join(", ", map  { doubleQuote($_) } @$fclinkeys )." ]\n".
         'mu2emetadata.fcl.outkeys: [ '. join(', ',map  { doubleQuote($_) } @$fcloutkeys)." ]\n".
         "# End code added by generate_fcl:\n".
@@ -645,7 +646,8 @@ if($srctype eq 'EmptyEvent') {
         my $fclfb = ''; # a buffer to accumulate fcl file content
         my @parents;
 
-        addAuxInPrologs(\$fclfb, \@auxin_specs, \@parents);
+        my @fclprologkeys;
+        push @fclprologkeys, addAuxInPrologs(\$fclfb, \@auxin_specs, \@parents);
 
         # Copy the content of the input template fcl.
         open(my $templfh, '<', $templatefile) or die "Can not open \"$templatefile\" $!\n";
@@ -661,11 +663,13 @@ if($srctype eq 'EmptyEvent') {
         addRandomSeed(\$fclfb, \%usedSeeds) if $seedServiceKey;
 
         my @fclinkeys;
-        push @fclinkeys, generateKeysForLocals(\$fclfb, \@auxin_specs);
         push @fclinkeys, addAuxInEpilogs(\$fclfb,\@auxin_specs, \@parents);
 
         my $fcloutkeys = setOutputFileNames(\$fclfb, $seq);
-        printCommonTrailer(\$fclfb, \@fclinkeys, $fcloutkeys);
+
+        generateKeysForLocals(\$fclfb, \@auxin_specs);
+
+        printCommonTrailer(\$fclfb, \@fclprologkeys, \@fclinkeys, $fcloutkeys);
 
         open( my $fh,  '>', $fn ) or die "error opening output file $fn: $!\n";
         print $fh $fclfb or die "Error printing to fcl file \"$fn\": $!\n";
@@ -704,7 +708,8 @@ elsif($srctype eq 'RootInput') {
         my $fclfb = ''; # a buffer to accumulate fcl file content
         my @parents;
 
-        addAuxInPrologs(\$fclfb, \@auxin_specs, \@parents);
+        my @fclprologkeys;
+        push @fclprologkeys, addAuxInPrologs(\$fclfb, \@auxin_specs, \@parents);
 
         # Copy the content of the input template fcl.
         open(my $templfh, '<', $templatefile) or die "Can not open \"$templatefile\" $!\n";
@@ -723,11 +728,13 @@ elsif($srctype eq 'RootInput') {
         # Set input file names
         push @fclinkeys, addInputFileNames(\$fclfb, "source.fileNames", ':', \@chunk, \@parents);
 
-        push @fclinkeys, generateKeysForLocals(\$fclfb, \@auxin_specs);
         push @fclinkeys, addAuxInEpilogs(\$fclfb, \@auxin_specs, \@parents);
 
         my $fcloutkeys = setOutputFileNames(\$fclfb, $seq);
-        printCommonTrailer(\$fclfb, \@fclinkeys, $fcloutkeys);
+
+        generateKeysForLocals(\$fclfb, \@auxin_specs);
+
+        printCommonTrailer(\$fclfb, \@fclprologkeys, \@fclinkeys, $fcloutkeys);
 
         open( my $fh,  '>', $fn ) or die "error opening output file $fn: $!\n";
         print $fh $fclfb or die "Error printing to fcl file \"$fn\": $!\n";
