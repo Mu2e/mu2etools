@@ -42,6 +42,7 @@ case "${FHICLCPP_VERSION}" in
     v3_06_01) VER=v1_00_01;;
     v3_12_06) VER=v1_01_02;;
     v3_12_09) VER=v1_01_03;;
+    v4_01_00) VER=v1_01_04;;
 
     *)
         # leave it empty - may be "current" is the correct answer
