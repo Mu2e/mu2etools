@@ -311,7 +311,6 @@ my $split_stride = 1;
 my $split_batch_size = 1000;
 
 my %opt = ('dsowner' =>  $defaultUser,
-           'first-subrun' => 0,
            'auxinput' => \@auxinputStrSpecs,
            'split' => \$split,
            'split-start' => \$split_start,
@@ -428,11 +427,9 @@ foreach my $ss (fclkey_SeedService) {
 
 my %usedSeeds;
 if($seedServiceKey) {
-    die "A list of random seeds from existing subruns of this dataset must be specified with --old-seeds.\n"
-        ."Use an empty file for the initial run.\n"
-        unless defined $opt{'old-seeds'};
+    my $inseedfile = $opt{'old-seeds'} // '/dev/null';
 
-    open(my $oldseeds, '<', $opt{'old-seeds'}) or die "Error opening input file $opt{'old-seeds'}: $!\n";
+    open(my $oldseeds, '<', $inseedfile) or die "Error opening input file $inseedfile: $!\n";
     while(my $line = <$oldseeds>) {
         chomp $line;
         next if $line eq '';
@@ -632,6 +629,7 @@ if($srctype eq 'EmptyEvent') {
 
     foreach my $k (@emptySourceArgs) {
         (defined $opt{$k} and $opt{$k} ne '' )
+            or ($k eq 'first-subrun')
             or die "Error: --$k must be specified and nonempty for EmptySource fcl files.  Try the --help option.\n";
     }
 
@@ -641,7 +639,7 @@ if($srctype eq 'EmptyEvent') {
     }
 
     for(my $i = 0; $i < $opt{'njobs'}; ++$i) {
-        my $subrun = $i + $opt{'first-subrun'};
+        my $subrun = $i + ($opt{'first-subrun'} // 0);
 
         my $run = $opt{'run-number'};
 
