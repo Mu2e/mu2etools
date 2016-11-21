@@ -23,7 +23,7 @@ use Data::Dumper; # for debugging
 use Class::Struct Mu2eAuxInSpec =>
     [numFilesPerJob=>'$', fclkey=>'$', prolog=>'$', listFileName=>'$', filenames=>'*@',
      # @rsr is a work area to keep "resampling refs": each element is a reference
-     # to an different entry in @filenames.  sampleFileNames() draws random
+     # to a different entry in @filenames.  sampleFileNames() draws random
      # refs from @rsr, and removes them from the array.  If there are not enough
      # entries in @rsr to generate a set of filenames for the next fcl file,
      # @rsr is reset to contain a complete set of @filenames refs again.
@@ -42,7 +42,7 @@ Usage:
          --simulation-stage=<int> \\
          --primary-particle=<string> \\
          { --inputs=<list-file-name> --merge-factor=<int> |\\
-           --run-number=<int> --first-subrun=<int> \\
+           --run-number=<int> [--first-subrun=<int>] \\
            --events-per-job=<int> --njobs=<int> }\\
          [--old-seeds=<seeds-file-name>] \\
          [--auxinput=[numFiles:]<fclVarName>:<filelist>] \\
@@ -59,13 +59,20 @@ according to the Mu2e convention
 http://mu2e.fnal.gov/atwork/computing/tapeUpload.shtml
 Note that the name of each file in the Mu2e data handling system must
 be unique. If --dsowner is not specified, the current username will be
-used.
+used. (If the script is run by the mu2epro user, the default dsowner
+is mu2e.)
 
-The --old-seeds option points to a text file with a list of seeds that
-should not be used in the current generation.  It is required in case
-the fcl file defines the SeedService.  Normally this file will contain
-a list of seeds in already existing subruns of this dataset.  One can
-specify /dev/null for the initial generation.
+The --old-seeds option can be used to provide to a text file with a
+list of seeds that should not be used in the current generation.
+If SeedService is defined in the template fcl file, generate_fcl
+writes out a list of all seeds used in the current invocation merged
+with the --old-seeds list, if any.  This output file can be used with
+the --old-seeds option if one decides to add statistics to that fcl
+dataset later; it is necessary to guarantee that each simulation job
+uses a unique random seed.
+
+If adding statistics to an existing fcl dataset, remember to specify
+an appropriate --first-subrun in addition to --old-seeds.
 
 The --auxinput option sets the given fcl file variable so that it
 points to the files in the given filelist.  If numFiles is specified,
@@ -83,15 +90,15 @@ file.
 
 With the --nosplit options all the generated files will written into
 the current directory.  With the --split option (the default) fcl and
-json files will be put into subdirectories named 000 to 999, so they
-can be easily placed into the FTS input tree using tar.  The
+json files will be put into subdirectories named 000 to 999, so that
+we do not put too many files into a single directory.  The
 subdirectories will be created as needed.  The exact distribution of
 files among the subdirectories is controlled by the --split-start
 (defautl 0), --split-stride (default 1) and --split-batch-size
 (default 1000) parameters.
 
-For each fcl file a matching json file, suitable to upload the fcl
-file to the FTS, will be produced.  The --generic-json option switches
+For each fcl file a matching json file will be produced, suitable to
+register the job config with SAM.  The --generic-json option switches
 off writing of individual json files.  Instead a single generic json
 file, suitable as in input to jsonMaker, will be produced.
 
@@ -294,6 +301,8 @@ sub addAuxInEpilogs($$$) {
 #================================================================
 # execution starts here
 my $defaultUser = getpwuid($EFFECTIVE_USER_ID);
+$defaultUser =~ s/^mu2epro$/mu2e/; # standard datasets should be owned by "mu2e", not "mu2epro"
+
 my @auxinputStrSpecs;
 
 my $split = 1;
@@ -301,7 +310,8 @@ my $split_start = 0;
 my $split_stride = 1;
 my $split_batch_size = 1000;
 
-my %opt = ('dsowner=s' =>  $defaultUser,
+my %opt = ('dsowner' =>  $defaultUser,
+           'first-subrun' => 0,
            'auxinput' => \@auxinputStrSpecs,
            'split' => \$split,
            'split-start' => \$split_start,
@@ -772,12 +782,13 @@ EOF
 # we've generated in this invocation.  This file will be convenient to
 # have if we want to add more statistics.
 
-my ($outseedfh, $outseedfn) = tempfile("seeds.$dsowner.$opt{description}.$dsconf.XXXX", SUFFIX => '.txt');
-for my $seed (sort {$a <=> $b} keys %usedSeeds) {
-    print $outseedfh $seed, "\n"
-        or die "Error printing the seeds: $!\n";
+if(scalar keys %usedSeeds > 0) {
+    my ($outseedfh, $outseedfn) = tempfile("seeds.$dsowner.$opt{description}.$dsconf.XXXX", SUFFIX => '.txt');
+    for my $seed (sort {$a <=> $b} keys %usedSeeds) {
+        print $outseedfh $seed, "\n"
+            or die "Error printing the seeds: $!\n";
+    }
+    close($outseedfh) or die "Can not close file \"$outseedfn\": $!\n";
 }
-
-close($outseedfh) or die "Can not close file \"$outseedfn\": $!\n";
 
 #================================================================
