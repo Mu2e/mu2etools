@@ -38,9 +38,6 @@ Usage:
         $self \\
          --description=<string> --dsconf=<string> \\
          [--dsowner=<string>] \\
-         --generator-type=<string> \\
-         --simulation-stage=<int> \\
-         --primary-particle=<string> \\
          { --inputs=<list-file-name> --merge-factor=<int> |\\
            --run-number=<int> [--first-subrun=<int>] \\
            --events-per-job=<int> --njobs=<int> }\\
@@ -325,9 +322,6 @@ GetOptions(\%opt,
            'description=s',
            'dsconf=s',
            'dsowner=s',
-           'generator-type=s',
-           'simulation-stage=i',
-           'primary-particle=s',
            'inputs=s',
            'merge-factor=i',
            'run-number=i',
@@ -499,18 +493,11 @@ foreach my $str (@auxinputStrSpecs) {
 checkParameterValues(\%opt,
                      ['dsowner',
                       'dsconf',
-                      'description',
-                      'generator-type',
-                      'simulation-stage',
-                      'primary-particle'
+                      'description'
                      ]);
 
 my $dsowner = $opt{'dsowner'};
 my $dsconf = $opt{'dsconf'};
-
-my $generator_type = $opt{'generator-type'};
-my $simulation_stage = $opt{'simulation-stage'};
-my $primary_particle = $opt{'primary-particle'};
 
 # The set of required args depends on the fcl: e.g s1 needs run
 # and subrun numbers but s2 does not, and can not use them.
@@ -575,9 +562,6 @@ sub writeSpecificJSON($$$) {
     "file_name": "$filebase",
     "file_size": $filesize,
     "file_type": "mc",
-    "mc.generator_type": "$generator_type",
-    "mc.simulation_stage": $simulation_stage,
-    "mc.primary_particle": "$primary_particle"
 }
 EOF
     or die "Error printing to file $jfn: $!\n";
@@ -615,9 +599,6 @@ sub printCommonTrailer($$$$) {
     my ($fb, $fclprologkeys, $fclinkeys, $fcloutkeys) = @_;
 
     $$fb .=
-        "mu2emetadata.mc.generator_type: \"$generator_type\"\n".
-        "mu2emetadata.mc.simulation_stage: $simulation_stage\n".
-        "mu2emetadata.mc.primary_particle: \"$primary_particle\"\n".
         "mu2emetadata.fcl.prologkeys: [ ". join(", ", map  { doubleQuote($_) } @$fclprologkeys )." ]\n".
         "mu2emetadata.fcl.inkeys: [ ". join(", ", map  { doubleQuote($_) } @$fclinkeys )." ]\n".
         'mu2emetadata.fcl.outkeys: [ '. join(', ',map  { doubleQuote($_) } @$fcloutkeys)." ]\n".
@@ -765,9 +746,6 @@ if($opt{'generic-json'}) {
     open( my $json,  '>', $jsonfilename ) or die "error opening output file $jsonfilename: $!\n";
     print $json <<EOF
 {
-    "mc.generator_type": "$generator_type",
-    "mc.simulation_stage": $simulation_stage,
-    "mc.primary_particle": "$primary_particle"
 }
 EOF
     or die "Error printing to json file: $!\n";
