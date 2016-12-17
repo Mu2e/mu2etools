@@ -45,7 +45,6 @@ Usage:
          [--auxinput=[numFiles:]<fclVarName>:<filelist>] \\
          [--[no]split] \\
          [--split-start=<int> --split-stride=<int> --slit-batch-size=<int>] \\
-         [--generic-json] \\
          [--debug-seed=<int>] \\
          [--verbose] [--help] \\
          template-fcl-file
@@ -95,9 +94,7 @@ files among the subdirectories is controlled by the --split-start
 (default 1000) parameters.
 
 For each fcl file a matching json file will be produced, suitable to
-register the job config with SAM.  The --generic-json option switches
-off writing of individual json files.  Instead a single generic json
-file, suitable as in input to jsonMaker, will be produced.
+register the job config with SAM.
 
 The --debug-seed option is used to develop the generate_fcl script
 itself.  It allows to obtain a reproducible sequence of pseudorandom
@@ -313,7 +310,6 @@ my %opt = ('dsowner' =>  $defaultUser,
            'split-start' => \$split_start,
            'split-stride' => \$split_stride,
            'split-batch-size' => \$split_batch_size,
-           'generic-json' => 0,
            'verbose' => 0,
            'help' => 0);
 
@@ -334,7 +330,6 @@ GetOptions(\%opt,
            'split-start=i',
            'split-stride=i',
            'split-batch-size=i',
-           'generic-json',
            'debug-seed=i',
            'help',
            'verbose',
@@ -664,7 +659,7 @@ if($srctype eq 'EmptyEvent') {
         print $fh $fclfb or die "Error printing to fcl file \"$fn\": $!\n";
         close($fh) or die "Can not close file \"$fn\": $!\n";
 
-        writeSpecificJSON($fn, \$fclfb, \@parents) unless $opt{'generic-json'};
+        writeSpecificJSON($fn, \$fclfb, \@parents);
     }
 
 }
@@ -729,28 +724,12 @@ elsif($srctype eq 'RootInput') {
         print $fh $fclfb or die "Error printing to fcl file \"$fn\": $!\n";
         close($fh) or die "Can not close file \"$fn\": $!\n";
 
-        writeSpecificJSON($fn, \$fclfb, \@parents) unless $opt{'generic-json'};
+        writeSpecificJSON($fn, \$fclfb, \@parents);
     }
 
 }
 else {
     die "Error: unknown source.module_type = $srctype\n";
-}
-
-
-#================================================================
-# Produce a generic json file for upload of generated fcl files to SAM
-
-if($opt{'generic-json'}) {
-    my $jsonfilename = "generic.$dsowner.$opt{description}.$dsconf.json";
-    open( my $json,  '>', $jsonfilename ) or die "error opening output file $jsonfilename: $!\n";
-    print $json <<EOF
-{
-}
-EOF
-    or die "Error printing to json file: $!\n";
-
-    close($json) or die "Can not close file \"$jsonfilename\": $!\n";
 }
 
 #================================================================
