@@ -556,7 +556,7 @@ sub writeSpecificJSON($$$) {
     "file_format": "fcl",
     "file_name": "$filebase",
     "file_size": $filesize,
-    "file_type": "mc",
+    "file_type": "mc"
 }
 EOF
     or die "Error printing to file $jfn: $!\n";
