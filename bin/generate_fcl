@@ -43,8 +43,6 @@ Usage:
            --events-per-job=<int> --njobs=<int> }\\
          [--old-seeds=<seeds-file-name>] \\
          [--auxinput=[numFiles:]<fclVarName>:<filelist>] \\
-         [--[no]split] \\
-         [--split-start=<int> --split-stride=<int> --slit-batch-size=<int>] \\
          [--debug-seed=<int>] \\
          [--verbose] [--help] \\
          template-fcl-file
@@ -84,14 +82,10 @@ the template file.  If the variable name does not start with the '\@'
 sign, an assignment to that variable will be appended to the user fcl
 file.
 
-With the --nosplit options all the generated files will written into
-the current directory.  With the --split option (the default) fcl and
-json files will be put into subdirectories named 000 to 999, so that
-we do not put too many files into a single directory.  The
-subdirectories will be created as needed.  The exact distribution of
-files among the subdirectories is controlled by the --split-start
-(defautl 0), --split-stride (default 1) and --split-batch-size
-(default 1000) parameters.
+The script will create a subdirectory '000' and write up to a 1000
+output fcl files there.  If there are more files to be written,
+subdirectories '001' etc.  will be created as needed, so that each
+directory will hold no more than 1000 fcl files.
 
 For each fcl file a matching json file will be produced, suitable to
 register the job config with SAM.
@@ -306,10 +300,6 @@ my $split_batch_size = 1000;
 
 my %opt = ('dsowner' =>  $defaultUser,
            'auxinput' => \@auxinputStrSpecs,
-           'split' => \$split,
-           'split-start' => \$split_start,
-           'split-stride' => \$split_stride,
-           'split-batch-size' => \$split_batch_size,
            'verbose' => 0,
            'help' => 0);
 
@@ -326,10 +316,6 @@ GetOptions(\%opt,
            'njobs=i',
            'old-seeds=s',
            'auxinput=s',
-           'split!',
-           'split-start=i',
-           'split-stride=i',
-           'split-batch-size=i',
            'debug-seed=i',
            'help',
            'verbose',
