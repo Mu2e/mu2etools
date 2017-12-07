@@ -33,9 +33,6 @@ EOF
     return 1;
 fi
 
-
-# the default is emtpy version, which will
-# cause UPS to set up the "current" version of the package
 VER=
 case "${FHICLCPP_VERSION}" in
     v3_03_00) VER=v1_00_00;;
@@ -44,11 +41,11 @@ case "${FHICLCPP_VERSION}" in
     v3_12_09) VER=v1_01_03;;
     v4_01_00) VER=v1_01_04;;
     v4_03_02) VER=v1_01_05;;
-    v4_05_01) VER=v1_01_06;;
+    v4_05_01) VER=v1_01_07;;
 
     *)
-        # leave it empty - may be "current" is the correct answer
-        # for the given set of qualifiers
+        echo "Error:  unknown FHICLCPP_VERSION ${FHICLCPP_VERSION}. Can not determine the matching version of mu2ebintools." >&2
+        return 1;
         ;;
 esac
 
