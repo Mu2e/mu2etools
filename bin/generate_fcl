@@ -369,11 +369,29 @@ if($ntsoutstr ne '') {
 }
 
 # optional .art output files
-my @outmods = `fhicl-getpar --keys outputs $templatefile 2>/dev/null`;
-chomp @outmods;
-print "Got outmods = @outmods\n" if $verbose;
+my @all_outmods = `fhicl-getpar --keys outputs $templatefile 2>/dev/null`;
+chomp @all_outmods;
+print "Got all_outmods = @all_outmods\n" if $verbose;
+
+# Filter out output modules that are not active in the given configuration.
+# Prepare a list of all active end path modules (outputs, but also analyzers).
+my %endmodules;
+my @endpaths = `fhicl-getpar --strlist physics.end_paths $templatefile 2>/dev/null`;
+chomp @endpaths;
+foreach my $ep (@endpaths) {
+    my @mods = `fhicl-getpar --strlist physics.$ep $templatefile 2>/dev/null`;
+    chomp @mods;
+    for my $m (@mods) {
+        print "Found end path module = $m\n" if $verbose;
+        $endmodules{$m} = 1;
+    }
+}
+
+# Do the filtering
+my @active_outmods = grep { $endmodules{$_} } @all_outmods;
+
 my %fwout;
-foreach my $mod (@outmods) {
+foreach my $mod (@active_outmods) {
     my $cmd = sprintf "fhicl-getpar --string ".fclkey_outModFMT." $templatefile 2>/dev/null", $mod;
     my $outfile = `$cmd`;
     if($?) {
@@ -563,7 +581,7 @@ sub setOutputFileNames($$) {
         push @fcloutkeys, fclkey_TFileServiceFN;
     }
 
-    foreach my $mod (@outmods) {
+    foreach my $mod (@active_outmods) {
         my $artkey = sprintf fclkey_outModFMT, $mod;
         $fwout{$mod}->sequencer($seq);
         my $afn = $fwout{$mod}->basename;
