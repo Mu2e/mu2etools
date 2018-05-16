@@ -71,7 +71,7 @@ an appropriate --first-subrun in addition to --old-seeds.
 The --auxinput option sets the given fcl file variable so that it
 points to the files in the given filelist.  If numFiles is specified,
 only the given number of randomly selected files from the list are
-used, rather than the complete list.  The --fclinput option can be
+used, rather than the complete list.  The --auxinput option can be
 repeated several times, the effect is cumulative.  If fclVarName
 starts with the '\@' sign, it will generate a BEGIN_PROLOG/END_PROLOG
 block with a fclVarName definition, which should be referred to using
