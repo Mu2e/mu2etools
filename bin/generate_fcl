@@ -293,11 +293,6 @@ $defaultUser =~ s/^mu2epro$/mu2e/; # standard datasets should be owned by "mu2e"
 
 my @auxinputStrSpecs;
 
-my $split = 1;
-my $split_start = 0;
-my $split_stride = 1;
-my $split_batch_size = 1000;
-
 my %opt = ('dsowner' =>  $defaultUser,
            'auxinput' => \@auxinputStrSpecs,
            'verbose' => 0,
@@ -507,11 +502,7 @@ my @fileInputsArgs = ('inputs', 'merge-factor');
 #================================================================
 sub getSplitSubdirName($) {
     my ($num)= @_;
-
-    my $subdir = $split ?
-        sprintf "%03d", ($split_start + $split_stride * int($num / $split_batch_size))  % 1000
-        : '.';
-
+    my $subdir = sprintf "%03d", int($num / 1000);
     return $subdir;
 }
 
