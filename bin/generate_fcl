@@ -181,6 +181,11 @@ sub sampleFileNames($) {
 
         # do we have enough entries left?
         if(@{$spec->rsr} <= $spec->numFilesPerJob) {
+
+            # Discard the leftovers, otherwise we may use
+            # the same aux file twice in a single output fcl.
+            @{$spec->rsr} = ();
+
             # refill @rsr
             for(my $i=0; $i<@{$spec->filenames}; ++$i) {
                 push @{$spec->rsr}, $spec->filenames($i);
