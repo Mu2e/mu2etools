@@ -308,8 +308,7 @@ my @auxinputStrSpecs;
 
 my %opt = ('dsowner' =>  $defaultUser,
            'auxinput' => \@auxinputStrSpecs,
-           'verbose' => 0,
-           'help' => 0);
+    );
 
 # Process command line opts.
 GetOptions(\%opt,
