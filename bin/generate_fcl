@@ -41,7 +41,7 @@ Usage:
            --run-number=<int> [--first-subrun=<int>] \\
            --events-per-job=<int> --njobs=<int> }\\
          [--old-seeds=<seeds-file-name>] \\
-         [--auxinput=[numFiles:]<fclVarName>:<filelist>] \\
+         [--auxinput=numFiles:<fclVarName>:<filelist>] \\
          [--debug-seed=<int>] \\
          [--verbose] [--help] \\
          template-fcl-file
@@ -68,18 +68,18 @@ If adding statistics to an existing fcl dataset, remember to specify
 an appropriate --first-subrun in addition to --old-seeds.
 
 The --auxinput option sets the given fcl file variable so that it
-points to the files in the given filelist.  If numFiles is specified,
-only the given number of randomly selected files from the list are
-used, rather than the complete list.  The --auxinput option can be
-repeated several times, the effect is cumulative.  If fclVarName
-starts with the '\@' sign, it will generate a BEGIN_PROLOG/END_PROLOG
-block with a fclVarName definition, which should be referred to using
-the \@local::fclVarName syntax in the template fcl file.  Prolog
-definitions use the \@protect_ignore: FHiCL bindings, therefore take
-precedence over any subsequent re-definitions of the same variable in
-the template file.  If the variable name does not start with the '\@'
-sign, an assignment to that variable will be appended to the user fcl
-file.
+points to the files in the given filelist.  The numFiles parameter,
+which can be a natural number or the literal 'all', specifies how
+many randomly selected files from the list should be used per job.
+The --auxinput option can be repeated several times, the effect is
+cumulative.  If fclVarName starts with the '\@' sign, it will generate
+a BEGIN_PROLOG/END_PROLOG block with a fclVarName definition, which
+should be referred to using the \@local::fclVarName syntax in the
+template fcl file.  Prolog definitions use the \@protect_ignore: FHiCL
+bindings, therefore take precedence over any subsequent re-definitions
+of the same variable in the template file.  If the variable name does
+not start with the '\@' sign, an assignment to that variable will be
+appended to the user fcl file.
 
 The script will create a subdirectory '000' and write up to a 1000
 output fcl files there.  If there are more files to be written,
@@ -448,21 +448,21 @@ elsif(defined $opt{'old-seeds'}) {
 my @auxin_specs;
 foreach my $str (@auxinputStrSpecs) {
 
-    die "Error in an --auxin specification: no ':' in $str\n" unless $str =~ /:/;
+    my ($nfstr, $var, $listfile, $extra) = split(/:/, $str);
 
-    my $numFiles = 0; # the default: unlimited
-    my $var;
-    my $listfile;
-    (my $l1, my $l2) = split(/:/, $str, 2);
-    if($l1 =~ /^\d/) {
-        die "Invalid numFiles=$l1  in --auxinput=$str\n"
-            unless $l1 =~ /^\d+$/;
-        $numFiles = $l1;
-        die "Error in an --auxin specification: no 'filelist' part in $str\n" unless $l2 =~ /:/;
-        ($var, $listfile) = split(/:/, $l2, 2);
+    die "Error in an --auxin specification: more than two ':'-s in \"$str\"\n" if defined $extra;
+    die "Error in an --auxin specification: less than two ':'-s in \"$str\"\n" unless defined $listfile;
+
+    my $numFiles;
+    if($nfstr eq 'all') {
+        $numFiles = 0;
+    }
+    elsif($nfstr =~ /^\d+$/) {
+        $numFiles = 0+$nfstr;
+        die "$numFiles = 0 is not valid in --auxin spec \"$str\".  Do you mean 'all'?\n" unless $numFiles;
     }
     else {
-        ($var, $listfile) = ($l1, $l2);
+        die "Invalid numFiles in the --auxin spec $str\n";
     }
 
     my @auxfiles;
