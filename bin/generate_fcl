@@ -8,7 +8,6 @@ use Getopt::Long;
 use Digest;
 use File::Basename;
 use File::Copy;
-use File::Path qw/make_path/;
 use File::Temp qw/tempfile/;
 use English qw( -no_match_vars ) ; # Avoids regex performance penalty
 
@@ -203,6 +202,15 @@ sub sampleFileNames($) {
 }
 
 #================================================================
+sub countFileLines($) {
+    my $infile = shift;
+    my $count = 0;
+    open(my $fh, '<',  $infile) or die "can not open $infile: $!";
+    $count++ while <$fh>;
+    close($fh);
+    return $count;
+}
+
 sub getNextInputListChunk($$) {
     my ($inputfh, $chunkSize) = @_;
     my @res;
@@ -500,10 +508,21 @@ my @emptySourceArgs = ('run-number', 'first-subrun', 'events-per-job', 'njobs');
 my @fileInputsArgs = ('inputs', 'merge-factor');
 
 #================================================================
-sub getSplitSubdirName($) {
+my $numJobsPerOutdir = 1000;
+
+sub getOutdirName($) {
     my ($num)= @_;
-    my $subdir = sprintf "%03d", int($num / 1000);
+    my $subdir = sprintf "%03d", int($num / $numJobsPerOutdir);
     return $subdir;
+}
+
+sub makeOutdirs($) {
+    my ($njobs)= @_;
+    for(my $i=0; $i<$njobs; $i += $numJobsPerOutdir) {
+        my $outdir = getOutdirName($i);
+        print "Creating outdir $outdir\n" if $verbose;
+        mkdir $outdir or die "Error creating output directory $outdir: $!\n";
+    }
 }
 
 #================================================================
@@ -609,6 +628,9 @@ if($srctype eq 'EmptyEvent') {
             if(defined $opt{$k});
     }
 
+
+    makeOutdirs($opt{'njobs'});
+
     for(my $i = 0; $i < $opt{'njobs'}; ++$i) {
         my $subrun = $i + ($opt{'first-subrun'} // 0);
 
@@ -616,10 +638,7 @@ if($srctype eq 'EmptyEvent') {
 
         my $seq = sprintf "%06i_%08i", $run, $subrun;
 
-        my $subdir = getSplitSubdirName($i);
-        make_path($subdir);
-        die "Error creating directory $subdir: $!\n" unless -d $subdir;
-
+        my $subdir = getOutdirName($i);
         my $fn =  "$subdir/cnf.$dsowner.$opt{description}.$dsconf.$seq.fcl";
 
         my $fclfb = ''; # a buffer to accumulate fcl file content
@@ -671,17 +690,19 @@ elsif($srctype eq 'RootInput') {
     }
 
     my $inputSourceList = $opt{'inputs'};
+    my $mergeFactor = $opt{'merge-factor'};
+
+    my $njobs = 1 + int( (countFileLines($inputSourceList) - 1)/ $mergeFactor);
+    makeOutdirs($njobs);
+
     open(my $insrcfh, '<', $inputSourceList) or die "Can not open input file \"$inputSourceList\": $!\n";
 
     my $num = 0;
-    while(my @chunk = getNextInputListChunk($insrcfh, $opt{'merge-factor'})) {
+    while(my @chunk = getNextInputListChunk($insrcfh, $mergeFactor)) {
 
         my $seq = extractASequencer(\@chunk);
 
-        my $subdir = getSplitSubdirName($num++);
-        make_path($subdir);
-        die "Error creating directory $subdir: $!\n" unless -d $subdir;
-
+        my $subdir = getOutdirName($num++);
         my $fn =  "$subdir/cnf.$dsowner.$opt{description}.$dsconf.$seq.fcl";
 
         my $fclfb = ''; # a buffer to accumulate fcl file content
