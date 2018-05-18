@@ -41,19 +41,33 @@ Usage:
            --run-number=<int> [--first-subrun=<int>] \\
            --events-per-job=<int> --njobs=<int> }\\
          [--old-seeds=<seeds-file-name>] \\
-         [--auxinput=numFiles:<fclVarName>:<filelist>] \\
+         [--auxinput=<numFiles>:<fclVarName>:<filelist>] \\
          [--debug-seed=<int>] \\
          [--verbose] [--help] \\
-         template-fcl-file
+         {--embed|--include} template-fcl-file
 
-That will produce --njobs fcl files.  File names will be constructed
-using --description, --dsconf, and other pieces of information
-according to the Mu2e convention
+That will produce a number fcl files, either --njobs or determined
+from the number of files in the --inputs list and the --merge-factor.
+File names will be constructed using --description, --dsconf, and
+other pieces of information according to the Mu2e convention
 http://mu2e.fnal.gov/atwork/computing/tapeUpload.shtml
 Note that the name of each file in the Mu2e data handling system must
 be unique. If --dsowner is not specified, the current username will be
 used. (If the script is run by the mu2epro user, the default dsowner
 is mu2e.)
+
+The content of the given template-fcl-file will be copied to each
+output fcl file if the --embed switch is specified.  In case the
+--include option is used, the output files will instead contain an
+#include template-fcl-file
+directive.  In this case the template-fcl-file string must be a
+relative file name,  locatable at the job run time via the
+FHICL_FILE_PATH environment variable.
+
+Examples:
+           --embed   ./template.fcl
+           --embed   JobConfig/beam/beam_g4s1.fcl
+           --include JobConfig/beam/beam_g4s1.fcl
 
 The --old-seeds option can be used to provide to a text file with a
 list of seeds that should not be used in the current generation.
@@ -298,6 +312,47 @@ sub addAuxInEpilogs($$$) {
     }
     return @fclinkeys;
 }
+#================================================================
+sub resolveFHICLFile($) {
+    my $templatespec = shift;
+
+    my @pathdirs = split(/:/, $ENV{'FHICL_FILE_PATH'});
+    foreach my $d(@pathdirs) {
+        next if $d eq '';
+        my $fn = $d . '/' . $templatespec;
+        return $fn if -e $fn;
+    }
+
+    die "Error: can not locate template file \"$templatespec\" relative to FHICL_FILE_PATH="
+        .$ENV{'FHICL_FILE_PATH'}."\n";
+}
+
+#================================================================
+# Appends the content of the template file or the #include line
+# to the output buffer.
+sub processTemplate($$$) {
+    my ($fb, $templatespec, $embed) = @_;
+
+    if($embed) {
+
+        my $templateresolved =
+            -e $templatespec && $templatespec
+            || resolveFHICLFile($templatespec);
+
+        # Copy the content of the input template fcl.
+        open(my $templfh, '<', $templateresolved) or die "Can not open \"$templateresolved\" $!\n";
+        while(my $line = <$templfh>) {
+            $$fb .= $line;
+        }
+
+        $$fb .=
+            "\n#----------------------------------------------------------------\n".
+            "# Code added by generate_fcl:\n";
+    }
+    else {
+        $$fb .= '#include ' . doubleQuote($templatespec) . "\n\n";
+    }
+}
 
 #================================================================
 # execution starts here
@@ -323,6 +378,8 @@ GetOptions(\%opt,
            'njobs=i',
            'old-seeds=s',
            'auxinput=s',
+           'embed',
+           'include',
            'debug-seed=i',
            'help',
            'verbose',
@@ -345,16 +402,32 @@ if(defined $opt{'debug-seed'}) {
 die "A single non-option arg must specify a template file. Try the --help option.\n"
     unless $#ARGV == 0;
 
-my $templatefile = $ARGV[0];
+my $templatespec = $ARGV[0];
+
+die "Exactly one of --include or --embed must be specified.\n"
+    unless ($opt{'embed'}//0) + ($opt{'include'}//0) == 1;
+
+my $embed = $opt{'embed'} // 0;
+
+#================================================================
+# We need to keep the original relative filename of the template
+# like "JobConfig/beam/beam_g4s1.fcl" for the #include directive
+# but we also need a resolved name for fhicl-getpar.
+
+# Check that the file to be included is findable relative to FHICL_FILE_PATH.
+# For this use case template files should be under Offline, so our current
+# environment is "similar enough" to the worker node one for this test
+# to make sense.
+
+my $templateresolved = $embed ?
+    -e $templatespec && $templatespec
+    || resolveFHICLFile($templatespec)
+    : resolveFHICLFile($templatespec);
+
+print "Resolved template file name = $templateresolved\n" if $verbose;
 
 #----------------------------------------------------------------
-# Set up the environment and extract info from the input fcl file
-$ENV{'FHICL_FILE_PATH'} =
-    defined($ENV{'FHICL_FILE_PATH'}) ?
-    ".:$ENV{'FHICL_FILE_PATH'}"
-    : ".";
-
-my $srctype = `fhicl-getpar --string source.module_type $templatefile`;
+my $srctype = `fhicl-getpar --string source.module_type $templateresolved`;
 if($?) {
     die "Error running fhicl-getpar to determine source.module_type.\n";
 }
@@ -362,7 +435,7 @@ chomp $srctype;
 print "Got srctype = $srctype\n" if $verbose;
 
 # optional TFileService output
-my $ntscmd = "fhicl-getpar --string ".fclkey_TFileServiceFN." $templatefile 2>/dev/null";
+my $ntscmd = "fhicl-getpar --string ".fclkey_TFileServiceFN." $templateresolved 2>/dev/null";
 my $ntsoutstr = `$ntscmd`;
 chomp $ntsoutstr;
 print "Got ntsoutstr = $ntsoutstr\n" if $verbose;
@@ -376,17 +449,17 @@ if($ntsoutstr ne '') {
 }
 
 # optional .art output files
-my @all_outmods = `fhicl-getpar --keys outputs $templatefile 2>/dev/null`;
+my @all_outmods = `fhicl-getpar --keys outputs $templateresolved 2>/dev/null`;
 chomp @all_outmods;
 print "Got all_outmods = @all_outmods\n" if $verbose;
 
 # Filter out output modules that are not active in the given configuration.
 # Prepare a list of all active end path modules (outputs, but also analyzers).
 my %endmodules;
-my @endpaths = `fhicl-getpar --strlist physics.end_paths $templatefile 2>/dev/null`;
+my @endpaths = `fhicl-getpar --strlist physics.end_paths $templateresolved 2>/dev/null`;
 chomp @endpaths;
 foreach my $ep (@endpaths) {
-    my @mods = `fhicl-getpar --strlist physics.$ep $templatefile 2>/dev/null`;
+    my @mods = `fhicl-getpar --strlist physics.$ep $templateresolved 2>/dev/null`;
     chomp @mods;
     for my $m (@mods) {
         print "Found end path module = $m\n" if $verbose;
@@ -399,7 +472,7 @@ my @active_outmods = grep { $endmodules{$_} } @all_outmods;
 
 my %fwout;
 foreach my $mod (@active_outmods) {
-    my $cmd = sprintf "fhicl-getpar --string ".fclkey_outModFMT." $templatefile 2>/dev/null", $mod;
+    my $cmd = sprintf "fhicl-getpar --string ".fclkey_outModFMT." $templateresolved 2>/dev/null", $mod;
     my $outfile = `$cmd`;
     if($?) {
         die "Error: no fileName for outputs.$mod\n";
@@ -416,7 +489,7 @@ foreach my $mod (@active_outmods) {
 # Determine whether SeedService is present: should we generate random seeds?
 foreach my $ss (fclkey_SeedService) {
     next unless $ss;
-    my $seedcmd = "fhicl-getpar --keys $ss $templatefile 2>/dev/null";
+    my $seedcmd = "fhicl-getpar --keys $ss $templateresolved 2>/dev/null";
     my @seedout = `$seedcmd`; chomp @seedout;
     if(@seedout) {
         $seedServiceKey = $ss;
@@ -651,15 +724,7 @@ if($srctype eq 'EmptyEvent') {
         my @fclprologkeys;
         push @fclprologkeys, addAuxInPrologs(\$fclfb, \@auxin_specs, \@parents);
 
-        # Copy the content of the input template fcl.
-        open(my $templfh, '<', $templatefile) or die "Can not open \"$templatefile\" $!\n";
-        while(my $line = <$templfh>) {
-            $fclfb .= $line;
-        }
-
-        $fclfb .=
-            "\n#----------------------------------------------------------------\n".
-            "# Code added by generate_fcl:\n";
+        processTemplate(\$fclfb, $templatespec, $embed);
 
         addEventID(\$fclfb, $run, $subrun, $opt{'events-per-job'});
         addRandomSeed(\$fclfb, \%usedSeeds) if $seedServiceKey;
@@ -715,15 +780,7 @@ elsif($srctype eq 'RootInput') {
         my @fclprologkeys;
         push @fclprologkeys, addAuxInPrologs(\$fclfb, \@auxin_specs, \@parents);
 
-        # Copy the content of the input template fcl.
-        open(my $templfh, '<', $templatefile) or die "Can not open \"$templatefile\" $!\n";
-        while(my $line = <$templfh>) {
-            $fclfb .= $line;
-        }
-
-        $fclfb .=
-            "\n#----------------------------------------------------------------\n".
-            "# Code added by generate_fcl:\n";
+        processTemplate(\$fclfb, $templatespec, $embed);
 
         addRandomSeed(\$fclfb, \%usedSeeds) if $seedServiceKey;
 
