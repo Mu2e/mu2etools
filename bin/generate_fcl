@@ -29,6 +29,8 @@ use Class::Struct Mu2eAuxInSpec =>
      rsr=>'@'
     ];
 
+my $maxUniqueEngines = 20;
+
 #================================================================
 sub usage() {
     my $self = basename($0);
@@ -43,6 +45,7 @@ Usage:
          [--old-seeds=<seeds-file-name>] \\
          [--auxinput=<numFiles>:<fclVarName>:<filelist>] \\
          [--debug-seed=<int>] \\
+         [--max-engines=<int>] \\
          [--verbose] [--help] \\
          {--embed|--include} template-fcl-file
 
@@ -156,7 +159,6 @@ sub addEventID($$$$) {
 
 sub addRandomSeed($$) {
     my ($fb, $usedSeeds) = @_;
-    my $maxUniqueEngines = 20;
 
     # art's RandomNumberGenerator_service restrict seeds to
     # not exceed 900000000.   Not clear if zero seed is OK
@@ -363,6 +365,7 @@ my @auxinputStrSpecs;
 
 my %opt = ('dsowner' =>  $defaultUser,
            'auxinput' => \@auxinputStrSpecs,
+           'max-engines' => \$maxUniqueEngines,
     );
 
 # Process command line opts.
@@ -381,6 +384,7 @@ GetOptions(\%opt,
            'embed',
            'include',
            'debug-seed=i',
+           'max-engines=i',
            'help',
            'verbose',
     )
