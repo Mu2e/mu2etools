@@ -46,6 +46,7 @@ case "${FHICLCPP_VERSION}" in
     v4_06_05) VER=v1_01_10;;
     v4_06_06) VER=v1_01_12;;
     v4_06_07) VER=v1_01_13;;
+    v4_06_08) VER=v1_01_14;;
 
     *)
         echo "Error:  unknown FHICLCPP_VERSION ${FHICLCPP_VERSION}. Can not determine the matching version of mu2ebintools." >&2
