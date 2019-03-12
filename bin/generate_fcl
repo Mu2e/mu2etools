@@ -825,6 +825,7 @@ if(scalar keys %usedSeeds > 0) {
             or die "Error printing the seeds: $!\n";
     }
     close($outseedfh) or die "Can not close file \"$outseedfn\": $!\n";
+    chmod(0444, $outseedfn);
 }
 
 #================================================================
