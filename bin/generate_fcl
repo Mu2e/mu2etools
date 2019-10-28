@@ -162,7 +162,7 @@ sub addRandomSeed($$) {
 
     # art's RandomNumberGenerator_service restrict seeds to
     # not exceed 900000000.   Not clear if zero seed is OK
-    # so we'll use a non-negative number up to the max.
+    # so we'll use a positive number up to the max.
     # Should leave space for SeedService to increment, thus
     # need to account for maxUniqueEngines.
     my $seedlimit= 900000000 - $maxUniqueEngines + 1;
