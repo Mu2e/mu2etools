@@ -750,7 +750,7 @@ if($srctype eq 'EmptyEvent') {
     }
 
 }
-elsif($srctype eq 'RootInput') {
+elsif(($srctype eq 'RootInput') or ($srctype eq 'FromCorsikaBinary')) {
 
     foreach my $k (@fileInputsArgs) {
         (defined $opt{$k} and $opt{$k} ne '' )
