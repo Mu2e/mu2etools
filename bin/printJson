@@ -1,0 +1,135 @@
+#!/usr/bin/perl -w
+#
+# A user-facing script to generate Mu2e file metadata.
+# It checks preconditions and re-formats a user-provided
+# list of "parents" to satisfy the rigid requirements
+# of a shell script that does the actual work.
+#
+# A.Gaponenko, 2020
+#
+
+use Getopt::Long;
+use File::Basename;
+use File::Temp qw/tempfile/;
+use English qw( -no_match_vars ) ; # Avoids regex performance penalty
+
+use Mu2eFilename;
+
+#================================================================
+sub usage() {
+    my $self = basename($0);
+    return <<EOF
+Usage:
+        $self {--parents=<textfile>|--no-parents} filename
+        $self --help
+        $self -h
+
+This script prints on STDOUT Mu2e metadata for the file filename in
+JSON format.  If the file is derived from another Mu2e dataset, for
+example it is a skim file or an ntuple, the list of parents should
+include all data files that were read by the job that produced that
+output.  This list should be given as a text file with one parent name
+per line (either basenames of absolute pathnames are OK).
+
+The --no-parents option is appropriate in some cases, for example for
+an archive of a workarea.
+
+Mu2e file naming convention: https://mu2ewiki.fnal.gov/wiki/FileNames
+EOF
+}
+
+#================================================================
+# Process command line opts.
+
+my %opt = ('help' =>  0, );
+
+GetOptions(\%opt,
+           'help',
+           'parents=s',
+           'no-parents',
+    )
+    or die "\nError processing command line options.\n";
+
+if($opt{'help'}) {
+    print usage();
+    exit 0;
+}
+
+#================================================================
+die "Error: Exactly one of --parents or --no-parents options must be specified\n"
+    unless (defined $opt{'parents'} and !defined $opt{'no-parents'})
+    or (!defined $opt{'parents'} and defined $opt{'no-parents'});
+
+my $rawparents = $opt{'parents'} // '';
+
+die "Exactly one agrument file name should be specified, got ", 1+$#ARGV, "\n"
+    unless $#ARGV == 0;
+
+my $infile = $ARGV[0];
+
+# Check the naming convenction
+my $fn;
+eval { $fn = Mu2eFilename->parse(basename($infile)); };
+die "Error: argument is not a Mu2e filename:\n$@"
+    if $@;
+
+# We should be able to read the file.
+# Try really opening it, since -r test is not sensitive to SELINUX, ACLs, etc.
+open(my $tmph, '<', $infile) or die "Can not open file \"$infile\": $!\n";
+close $tmph;
+
+# For art files we need file_info_dumper from the art suite.
+if($fn->extension eq 'art') {
+    my $dumper = `which file_info_dumper 2>/dev/null`;
+    die<<EOF
+Error: did not find  file_info_dumper.  It is required to be in PATH
+to extract metadata from art files.  The dumper is distrubuted with
+the art suite.  An easy way to provide it is to setup Mu2e Offline.
+EOF
+        if $?;
+}
+
+#================================================================
+my $parentfile;
+if($rawparents) {
+    (my $parentFH, $parentfile) = tempfile('printJson-XXXXX');
+
+    open(my $ph, '<', $rawparents) or die "Can not open file \"$parentfile\": $!\n";
+    while(my $line = <$ph>) {
+        chomp $line;
+        $line =~ s/^\s+//;
+        next if $line eq '';
+            die "Error: parent file should be given by either Mu2e basename or"
+                ." absolute pathname.\nGot: \"$line\"\n"
+                unless $line =~ m'^(/|[a-zA-Z])';
+
+        my $bn = basename($line);
+        eval { Mu2eFilename->parse($bn); };
+        die "Error: parent file basename is not a Mu2e filename:\n$@"
+            if $@;
+
+        #push @parents, $bn;
+        print $parentFH $bn, "\n";
+    }
+    close($ph);
+    close($parentFH)
+        or die "Error closing temporary file '$parentfile': $!\n";
+}
+
+#================================================================
+# The actual JSON generation is done by the shell script.
+
+my $scriptname = `which printJson.sh  2>/dev/null`;
+die "Error: bad setup.  Script printJson.sh is supposed to be in the PATH.\n"
+    if $?;
+
+chomp $scriptname;
+
+my $parentopt = defined $parentfile ? "--parents '$parentfile'" : "--no-parents";
+my $json = `$scriptname $parentopt '$infile'`;
+
+unlink  $parentfile if defined $parentfile;
+
+print $json;
+
+#================================================================
