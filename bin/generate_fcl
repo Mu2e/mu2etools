@@ -31,6 +31,8 @@ use Class::Struct Mu2eAuxInSpec =>
 
 my $maxUniqueEngines = 20;
 
+my $ignoreSource = 0;
+
 #================================================================
 sub usage() {
     my $self = basename($0);
@@ -42,6 +44,7 @@ Usage:
          { --inputs=<list-file-name> --merge-factor=<int> |\\
            --run-number=<int> [--first-subrun=<int>] \\
            --events-per-job=<int> --njobs=<int> }\\
+         [--ignore-source] \\
          [--old-seeds=<seeds-file-name>] \\
          [--auxinput=<numFiles>:<fclVarName>:<filelist>] \\
          [--debug-seed=<int>] \\
@@ -71,6 +74,17 @@ Examples:
            --embed   ./template.fcl
            --embed   JobConfig/beam/beam_g4s1.fcl
            --include JobConfig/beam/beam_g4s1.fcl
+
+Whether the '--inputs' or '--njobs' group of parameters should be
+provided is determined by the source type in the template-fcl-file,
+and source configuration is set appropriately in output fcl files.
+The '--ignore-source' option overrides that determination.  When this
+option is specified, one must provide the --njob group of parameters
+on the command line.  Individual job parameters (like the subrun
+number) will be written to a mu2emetadata block instead of assigned to
+the source module.  This option is meant to be used for special cases,
+such as running a non-art event generator (e.g. CORSIKA) in the same
+grid process as an art job that consumes the generator output.
 
 The --old-seeds option can be used to provide to a text file with a
 list of seeds that should not be used in the current generation.
@@ -151,10 +165,12 @@ sub checkParameterValues($$) {
 #================================================================
 sub addEventID($$$$) {
     my ($fb, $run, $subrun, $maxEvents) = @_;
+    my $dstblock = $ignoreSource ? "mu2emetadata" : "source";
+
     $$fb .=
-        "source.firstRun: $run\n" .
-        "source.firstSubRun: $subrun\n" .
-        "source.maxEvents: $maxEvents\n";
+        "$dstblock.firstRun: $run\n" .
+        "$dstblock.firstSubRun: $subrun\n" .
+        "$dstblock.maxEvents: $maxEvents\n";
 }
 
 sub addRandomSeed($$) {
@@ -366,6 +382,7 @@ my @auxinputStrSpecs;
 my %opt = ('dsowner' =>  $defaultUser,
            'auxinput' => \@auxinputStrSpecs,
            'max-engines' => \$maxUniqueEngines,
+           'ignore-source' => \$ignoreSource,
     );
 
 # Process command line opts.
@@ -379,6 +396,7 @@ GetOptions(\%opt,
            'first-subrun=i',
            'events-per-job=i',
            'njobs=i',
+           'ignore-source',
            'old-seeds=s',
            'auxinput=s',
            'embed',
@@ -696,12 +714,12 @@ sub printCommonTrailer($$$$) {
         "#----------------------------------------------------------------\n";
 }
 #================================================================
-if($srctype eq 'EmptyEvent') {
+if($ignoreSource or ($srctype eq 'EmptyEvent')) {
 
     foreach my $k (@emptySourceArgs) {
         (defined $opt{$k} and $opt{$k} ne '' )
             or ($k eq 'first-subrun')
-            or die "Error: --$k must be specified and nonempty for EmptySource fcl files.  Try the --help option.\n";
+            or die "Error: --$k must be specified and nonempty for EmptySource fcl files or when --ignore-source is specified.  Try the --help option.\n";
     }
 
     foreach my $k (@fileInputsArgs) {
