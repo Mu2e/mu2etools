@@ -167,10 +167,15 @@ sub addEventID($$$$) {
     my ($fb, $run, $subrun, $maxEvents) = @_;
     my $dstblock = $ignoreSource ? "mu2emetadata" : "source";
 
+    if($ignoreSource) {
+        $$fb .= "mu2emetadata.ignoreSource: 1\n";
+    }
+
     $$fb .=
         "$dstblock.firstRun: $run\n" .
         "$dstblock.firstSubRun: $subrun\n" .
         "$dstblock.maxEvents: $maxEvents\n";
+
 }
 
 sub addRandomSeed($$) {
