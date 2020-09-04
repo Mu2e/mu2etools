@@ -78,13 +78,24 @@ die "Error: argument is not a Mu2e filename:\n$@"
 open(my $tmph, '<', $infile) or die "Can not open file \"$infile\": $!\n";
 close $tmph;
 
+# For art files we need Mu2e Offline setup, to extract GenEventCount
+if($fn->extension eq 'art') {
+    my $mu2e = `which mu2e 2>/dev/null`;
+    die<<EOF
+Error: Did not find the mu2e binary in PATH; is Offline not setup?
+EOF
+        if $?;
+}
+
 # For art files we need file_info_dumper from the art suite.
+# This check is redundant with the Offline setup check above,
+# except for very old versions of Offline.
 if($fn->extension eq 'art') {
     my $dumper = `which file_info_dumper 2>/dev/null`;
     die<<EOF
 Error: did not find  file_info_dumper.  It is required to be in PATH
 to extract metadata from art files.  The dumper is distrubuted with
-the art suite.  An easy way to provide it is to setup Mu2e Offline.
+the art suite.
 EOF
         if $?;
 }
