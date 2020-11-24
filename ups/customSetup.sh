@@ -51,6 +51,7 @@ case "${FHICLCPP_VERSION}" in
     v4_10_00) VER=v1_01_16;;
     v4_11_00) VER=v1_01_17;;
     v4_11_01) VER=v1_01_18;;
+    v4_11_02) VER=v1_01_18b;; # Update of the older version for the su2020 branch
     v4_12_01) VER=v1_01_19;;
     v4_12_02) VER=v1_01_21;;
 
