@@ -48,6 +48,7 @@ Usage:
          [--ignore-source] \\
          [--old-seeds=<seeds-file-name>] \\
          [--auxinput=<numFiles>:<fclVarName>:<filelist>] \\
+         [--override-outputs] \\
          [--debug-seed=<int>] \\
          [--max-engines=<int>] \\
          [--verbose] [--help] \\
@@ -114,6 +115,13 @@ bindings, therefore take precedence over any subsequent re-definitions
 of the same variable in the template file.  If the variable name does
 not start with the '\@' sign, an assignment to that variable will be
 appended to the user fcl file.
+
+The --override-outputs option sets the description file name field of
+all output files for the jobs being defined to the description value
+used for the fcl dataset itself, instead of leaving the original
+values from the template-fcl-file intact, which is the default.
+The override only works a subset of job configs where it does
+not lead to duplicate file names in different output  streams.
 
 The script will create a subdirectory '000' and write up to a 1000
 output fcl files there.  If there are more files to be written,
@@ -426,6 +434,7 @@ GetOptions(\%opt,
            'ignore-source',
            'old-seeds=s',
            'auxinput=s',
+           'override-outputs',
            'embed',
            'include',
            'debug-seed=i',
@@ -719,20 +728,34 @@ sub setOutputFileNames($$) {
 
     my @fcloutkeys; # fcl keys for all output file name
 
+    my %outfilenamecounts; # multiplicity of each output file name, to check for duplicates
+
     if(defined $ntsfn) {
         $ntsfn->sequencer($seq);
+        $ntsfn->description($description) if($opt{'override-outputs'});
         my $histval = doubleQuote($ntsfn->basename);
         $$fb .= fclkey_TFileServiceFN .": $histval\n";
         push @fcloutkeys, fclkey_TFileServiceFN;
+        ++$outfilenamecounts{$ntsfn->basename};
     }
 
     foreach my $mod (@active_outmods) {
         my $artkey = sprintf fclkey_outModFMT, $mod;
         $fwout{$mod}->sequencer($seq);
+        $fwout{$mod}->description($description) if($opt{'override-outputs'});
         my $afn = $fwout{$mod}->basename;
         my $artval = doubleQuote($afn);
         $$fb .= "$artkey : $artval\n";
         push @fcloutkeys, $artkey;
+        ++$outfilenamecounts{$fwout{$mod}->basename};
+    }
+
+    while (my ($name, $count) = each %outfilenamecounts) {
+        if($count > 1) {
+            my $msg = "Error: output file name \"$name\" is defined more than once in the resulting fcl.\n";
+            $msg .= "Try deleting the --override-outputs option.\n" if($opt{'override-outputs'});
+            die $msg;
+        }
     }
 
     return \@fcloutkeys;
