@@ -39,7 +39,8 @@ sub usage() {
     return <<EOF
 Usage:
         $self \\
-         --description=<string> --dsconf=<string> \\
+         {--description=<string>|--auto-description} \\
+         --dsconf=<string> \\
          [--dsowner=<string>] \\
          { --inputs=<list-file-name> --merge-factor=<int> |\\
            --run-number=<int> [--first-subrun=<int>] \\
@@ -60,7 +61,9 @@ http://mu2e.fnal.gov/atwork/computing/tapeUpload.shtml
 Note that the name of each file in the Mu2e data handling system must
 be unique. If --dsowner is not specified, the current username will be
 used. (If the script is run by the mu2epro user, the default dsowner
-is mu2e.)
+is mu2e.)   The --auto-description option can be used only with --inputs
+and sets the description field to that of the input files; all input
+files in that case must have the same description.
 
 The content of the given template-fcl-file will be copied to each
 output fcl file if the --embed switch is specified.  In case the
@@ -244,11 +247,29 @@ sub sampleFileNames($) {
 }
 
 #================================================================
-sub countFileLines($) {
-    my $infile = shift;
+sub countFileLines($$) {
+    my ($infile, $extractedDescription) = @_;
     my $count = 0;
     open(my $fh, '<',  $infile) or die "can not open $infile: $!";
-    $count++ while <$fh>;
+
+    while(my $line = <$fh>) {
+        ++$count;
+        chomp($line);
+        die "Input file list error: the line is empty or contains white spaces or other non-printable characters: \"$line\"\n"
+            unless $line =~ /^\p{IsGraph}+$/;
+
+        if($extractedDescription) {
+            my  $fn = Mu2eFilename->parse(basename($line));
+            $$extractedDescription = $fn->description unless $$extractedDescription;
+            die "Error: inconsistent description field in input file list \"$infile\": got \""
+                . $fn->description
+                . "\" after seeing \""
+                . $$extractedDescription
+                . "\" earlier\n"
+                unless $$extractedDescription eq $fn->description;
+        }
+    }
+
     close($fh);
     return $count;
 }
@@ -393,6 +414,7 @@ my %opt = ('dsowner' =>  $defaultUser,
 # Process command line opts.
 GetOptions(\%opt,
            'description=s',
+           'auto-description',
            'dsconf=s',
            'dsowner=s',
            'inputs=s',
@@ -596,14 +618,23 @@ foreach my $str (@auxinputStrSpecs) {
 #================================================================
 # These arguments must always be provided
 
-checkParameterValues(\%opt,
-                     ['dsowner',
-                      'dsconf',
-                      'description'
-                     ]);
-
+checkParameterValues(\%opt, ['dsowner', 'dsconf']);
 my $dsowner = $opt{'dsowner'};
 my $dsconf = $opt{'dsconf'};
+
+my $description;  # for the auto case the value gets set just before the inputs processing loop.
+if($opt{'auto-description'}) {
+    if(defined $opt{'description'}) {
+        die "Error: --description and --auto-description are mutually exclusive.\n";
+    }
+}
+else {
+    die "Error: either --description or --auto-description must be specified\n"
+        unless defined $opt{'description'};
+
+    checkParameterValues(\%opt, ['description']);
+    $description = $opt{'description'};
+}
 
 # The set of required args depends on the fcl: e.g s1 needs run
 # and subrun numbers but s2 does not, and can not use them.
@@ -727,7 +758,7 @@ if($ignoreSource or ($srctype eq 'EmptyEvent')) {
             or die "Error: --$k must be specified and nonempty for EmptySource fcl files or when --ignore-source is specified.  Try the --help option.\n";
     }
 
-    foreach my $k (@fileInputsArgs) {
+    foreach my $k (@fileInputsArgs, 'auto-description') {
         die "Error: --$k is not compatible with EmtpySource fcl file.  Try the --help option.\n"
             if(defined $opt{$k});
     }
@@ -743,7 +774,7 @@ if($ignoreSource or ($srctype eq 'EmptyEvent')) {
         my $seq = sprintf "%06i_%08i", $run, $subrun;
 
         my $subdir = getOutdirName($i);
-        my $fn =  "$subdir/cnf.$dsowner.$opt{description}.$dsconf.$seq.fcl";
+        my $fn =  "$subdir/cnf.$dsowner.$description.$dsconf.$seq.fcl";
 
         my $fclfb = ''; # a buffer to accumulate fcl file content
         my @parents;
@@ -788,7 +819,8 @@ elsif(($srctype eq 'RootInput') or ($srctype eq 'FromCorsikaBinary')) {
     my $inputSourceList = $opt{'inputs'};
     my $mergeFactor = $opt{'merge-factor'};
 
-    my $njobs = 1 + int( (countFileLines($inputSourceList) - 1)/ $mergeFactor);
+    my $extractDescription = $opt{'auto-description'} ? \$description: undef;
+    my $njobs = 1 + int( (countFileLines($inputSourceList, $extractDescription) - 1)/ $mergeFactor);
     makeOutdirs($njobs);
 
     open(my $insrcfh, '<', $inputSourceList) or die "Can not open input file \"$inputSourceList\": $!\n";
@@ -799,7 +831,7 @@ elsif(($srctype eq 'RootInput') or ($srctype eq 'FromCorsikaBinary')) {
         my $seq = extractASequencer(\@chunk);
 
         my $subdir = getOutdirName($num++);
-        my $fn =  "$subdir/cnf.$dsowner.$opt{description}.$dsconf.$seq.fcl";
+        my $fn =  "$subdir/cnf.$dsowner.$description.$dsconf.$seq.fcl";
 
         my $fclfb = ''; # a buffer to accumulate fcl file content
         my @parents;
@@ -842,7 +874,7 @@ else {
 # have if we want to add more statistics.
 
 if(scalar keys %usedSeeds > 0) {
-    my ($outseedfh, $outseedfn) = tempfile("seeds.$dsowner.$opt{description}.$dsconf.XXXX", SUFFIX => '.txt');
+    my ($outseedfh, $outseedfn) = tempfile("seeds.$dsowner.$description.$dsconf.XXXX", SUFFIX => '.txt');
     for my $seed (sort {$a <=> $b} keys %usedSeeds) {
         print $outseedfh $seed, "\n"
             or die "Error printing the seeds: $!\n";
