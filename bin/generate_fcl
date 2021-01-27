@@ -40,7 +40,7 @@ sub usage() {
 Usage:
         $self \\
          {--description=<string>|--auto-description} \\
-         --dsconf=<string> \\
+          --dsconf=<string> \\
          [--dsowner=<string>] \\
          { --inputs=<list-file-name> --merge-factor=<int> |\\
            --run-number=<int> [--first-subrun=<int>] \\
@@ -58,7 +58,7 @@ That will produce a number fcl files, either --njobs or determined
 from the number of files in the --inputs list and the --merge-factor.
 File names will be constructed using --description, --dsconf, and
 other pieces of information according to the Mu2e convention
-http://mu2e.fnal.gov/atwork/computing/tapeUpload.shtml
+https://mu2ewiki.fnal.gov/wiki/FileNames
 Note that the name of each file in the Mu2e data handling system must
 be unique. If --dsowner is not specified, the current username will be
 used. (If the script is run by the mu2epro user, the default dsowner
@@ -120,7 +120,7 @@ The --override-outputs option sets the description file name field of
 all output files for the jobs being defined to the description value
 used for the fcl dataset itself, instead of leaving the original
 values from the template-fcl-file intact, which is the default.
-The override only works a subset of job configs where it does
+The override only works for a subset of job configs where it does
 not lead to duplicate file names in different output  streams.
 
 The script will create a subdirectory '000' and write up to a 1000
