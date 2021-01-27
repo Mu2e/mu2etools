@@ -499,11 +499,17 @@ chomp $ntsoutstr;
 print "Got ntsoutstr = $ntsoutstr\n" if $verbose;
 my $ntsfn;
 if($ntsoutstr ne '') {
-    $ntsfn = Mu2eFilename->parse($ntsoutstr);
-    die "Bad histo file name $ntsoutstr: expect extension .root\n" unless $ntsfn->extension eq 'root';
-    die "Bad histo file name $ntsoutstr: expect data tier nts\n" unless $ntsfn->tier eq 'nts';
-    $ntsfn->owner(outputfile_owner);
-    $ntsfn->configuration(outputfile_conf);
+    # To use TFileService for reading file while avoiding a root file
+    # output, art users set TFileService.fileName to /dev/null
+    # For data handling purposes this is equivalent to not having TFileService
+    # in the config.
+    if($ntsoutstr ne '/dev/null') {
+        $ntsfn = Mu2eFilename->parse($ntsoutstr);
+        die "Bad histo file name $ntsoutstr: expect extension .root\n" unless $ntsfn->extension eq 'root';
+        die "Bad histo file name $ntsoutstr: expect data tier nts\n" unless $ntsfn->tier eq 'nts';
+        $ntsfn->owner(outputfile_owner);
+        $ntsfn->configuration(outputfile_conf);
+    }
 }
 
 # optional .art output files
