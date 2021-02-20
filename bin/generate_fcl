@@ -39,7 +39,7 @@ sub usage() {
     return <<EOF
 Usage:
         $self \\
-         {--description=<string>|--auto-description} \\
+         {--description=<string>|--auto-description[=suffix]} \\
           --dsconf=<string> \\
          [--dsowner=<string>] \\
          { --inputs=<list-file-name> --merge-factor=<int> |\\
@@ -64,7 +64,9 @@ be unique. If --dsowner is not specified, the current username will be
 used. (If the script is run by the mu2epro user, the default dsowner
 is mu2e.)   The --auto-description option can be used only with --inputs
 and sets the description field to that of the input files; all input
-files in that case must have the same description.
+files in that case must have the same description.  If a suffix
+is provided, the final description string will be the concatenation
+of the string extracted from the input file list and the suffix.
 
 The content of the given template-fcl-file will be copied to each
 output fcl file if the --embed switch is specified.  In case the
@@ -422,7 +424,7 @@ my %opt = ('dsowner' =>  $defaultUser,
 # Process command line opts.
 GetOptions(\%opt,
            'description=s',
-           'auto-description',
+           'auto-description:s',
            'dsconf=s',
            'dsowner=s',
            'inputs=s',
@@ -638,7 +640,7 @@ my $dsowner = $opt{'dsowner'};
 my $dsconf = $opt{'dsconf'};
 
 my $description;  # for the auto case the value gets set just before the inputs processing loop.
-if($opt{'auto-description'}) {
+if(defined $opt{'auto-description'}) {
     if(defined $opt{'description'}) {
         die "Error: --description and --auto-description are mutually exclusive.\n";
     }
@@ -848,8 +850,16 @@ elsif(($srctype eq 'RootInput') or ($srctype eq 'FromCorsikaBinary')) {
     my $inputSourceList = $opt{'inputs'};
     my $mergeFactor = $opt{'merge-factor'};
 
-    my $extractDescription = $opt{'auto-description'} ? \$description: undef;
-    my $njobs = 1 + int( (countFileLines($inputSourceList, $extractDescription) - 1)/ $mergeFactor);
+    my $extractedDescription;
+    my $njobs = 1 + int(
+        (
+         countFileLines($inputSourceList, defined $opt{'auto-description'} ? \$extractedDescription: undef)
+         - 1
+        )
+        / $mergeFactor);
+
+    $description = $extractedDescription . $opt{'auto-description'} unless defined $description;
+
     makeOutdirs($njobs);
 
     open(my $insrcfh, '<', $inputSourceList) or die "Can not open input file \"$inputSourceList\": $!\n";
