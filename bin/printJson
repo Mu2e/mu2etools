@@ -138,9 +138,15 @@ chomp $scriptname;
 
 my $parentopt = defined $parentfile ? "--parents '$parentfile'" : "--no-parents";
 my $json = `$scriptname $parentopt '$infile'`;
+my $failed = $?;
 
 unlink  $parentfile if defined $parentfile;
 
+if($failed) {
+    exit(2);
+}
+
 print $json;
+
 
 #================================================================
