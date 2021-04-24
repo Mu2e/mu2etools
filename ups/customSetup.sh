@@ -54,11 +54,36 @@ case "${FHICLCPP_VERSION}" in
     v4_11_02) VER=v1_01_18b;; # Update of the older version for the su2020 branch
     v4_12_01) VER=v1_01_19;;
     v4_12_02) VER=v1_01_21;;
-
-    *)
-        echo "Error:  unknown FHICLCPP_VERSION ${FHICLCPP_VERSION}. Can not determine the matching version of mu2ebintools." >&2
-        return 1;
-        ;;
 esac
 
-setup -B mu2ebintools $VER -q ${MU2E_UPS_QUALIFIERS}
+if [[ -n "$VER" ]]; then
+    # We run an older Offline and should use the fhicl-getpar binary from mu2ebintools
+    # instead of fhicl-get from fhiclcpp as the latter may not exist or be unusable.
+    setup -B mu2ebintools $VER -q ${MU2E_UPS_QUALIFIERS}
+
+    # mu2eprodys relies on fhicl-get, provide a shell function that will shadow the
+    # potentially broken fhicl-get binary
+    fhicl-get() {
+        arg1="$1"; shift
+        newarg=
+        case "$arg1" in
+            --names-in) newarg="--keys";;
+            --atom-as)
+                arg2="$1"; shift
+                case "$arg2" in
+                    int) newarg="--int";;
+                    string) newarg="--string";;
+                esac
+                ;;
+            --sequence-of)
+                arg2="$1"; shift
+                case "$arg2" in
+                    string) newarg="--strlist";;
+                esac
+                ;;
+        esac
+        # echo running fhicl-getpar $newarg "${@}"
+        fhicl-getpar $newarg "${@}"
+    }
+    export -f fhicl-get
+fi
