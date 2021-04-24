@@ -336,7 +336,7 @@ sub addAuxInPrologs($$$) {
     return @fclinkeys;
 }
 #================================================================
-# fhicl-getpar allows worker node script to query parameter values.
+# fhicl-get allows worker node script to query parameter values.
 # The names of @local variables are not directly accessible there, we
 # need to create a fcl parameter for each @local var in order to get
 # information about parents.
@@ -472,7 +472,7 @@ my $embed = $opt{'embed'} // 0;
 #================================================================
 # We need to keep the original relative filename of the template
 # like "JobConfig/beam/beam_g4s1.fcl" for the #include directive
-# but we also need a resolved name for fhicl-getpar.
+# but we also need a resolved name for fhicl-get.
 
 # Check that the file to be included is findable relative to FHICL_FILE_PATH.
 # For this use case template files should be under Offline, so our current
@@ -487,15 +487,15 @@ my $templateresolved = $embed ?
 print "Resolved template file name = $templateresolved\n" if $verbose;
 
 #----------------------------------------------------------------
-my $srctype = `fhicl-getpar --string source.module_type $templateresolved`;
+my $srctype = `fhicl-get --atom-as string source.module_type $templateresolved`;
 if($?) {
-    die "Error running fhicl-getpar to determine source.module_type.\n";
+    die "Error running fhicl-get to determine source.module_type.\n";
 }
 chomp $srctype;
 print "Got srctype = $srctype\n" if $verbose;
 
 # optional TFileService output
-my $ntscmd = "fhicl-getpar --string ".fclkey_TFileServiceFN." $templateresolved 2>/dev/null";
+my $ntscmd = "fhicl-get --atom-as string ".fclkey_TFileServiceFN." $templateresolved 2>/dev/null";
 my $ntsoutstr = `$ntscmd`;
 chomp $ntsoutstr;
 print "Got ntsoutstr = $ntsoutstr\n" if $verbose;
@@ -515,17 +515,17 @@ if($ntsoutstr ne '') {
 }
 
 # optional .art output files
-my @all_outmods = `fhicl-getpar --keys outputs $templateresolved 2>/dev/null`;
+my @all_outmods = `fhicl-get --names-in outputs $templateresolved 2>/dev/null`;
 chomp @all_outmods;
 print "Got all_outmods = @all_outmods\n" if $verbose;
 
 # Filter out output modules that are not active in the given configuration.
 # Prepare a list of all active end path modules (outputs, but also analyzers).
 my %endmodules;
-my @endpaths = `fhicl-getpar --strlist physics.end_paths $templateresolved 2>/dev/null`;
+my @endpaths = `fhicl-get --sequence-of string physics.end_paths $templateresolved 2>/dev/null`;
 chomp @endpaths;
 foreach my $ep (@endpaths) {
-    my @mods = `fhicl-getpar --strlist physics.$ep $templateresolved 2>/dev/null`;
+    my @mods = `fhicl-get --sequence-of string physics.$ep $templateresolved 2>/dev/null`;
     chomp @mods;
     for my $m (@mods) {
         print "Found end path module = $m\n" if $verbose;
@@ -538,7 +538,7 @@ my @active_outmods = grep { $endmodules{$_} } @all_outmods;
 
 my %fwout;
 foreach my $mod (@active_outmods) {
-    my $cmd = sprintf "fhicl-getpar --string ".fclkey_outModFMT." $templateresolved 2>/dev/null", $mod;
+    my $cmd = sprintf "fhicl-get --atom-as string ".fclkey_outModFMT." $templateresolved 2>/dev/null", $mod;
     my $outfile = `$cmd`;
     if($?) {
         die "Error: no fileName for outputs.$mod\n";
@@ -555,7 +555,7 @@ foreach my $mod (@active_outmods) {
 # Determine whether SeedService is present: should we generate random seeds?
 foreach my $ss (fclkey_SeedService) {
     next unless $ss;
-    my $seedcmd = "fhicl-getpar --keys $ss $templateresolved 2>/dev/null";
+    my $seedcmd = "fhicl-get --names-in $ss $templateresolved 2>/dev/null";
     my @seedout = `$seedcmd`; chomp @seedout;
     if(@seedout) {
         $seedServiceKey = $ss;
