@@ -149,7 +149,7 @@ EOF
 #================================================================
 # constant strings used in more than one place
 
-use constant fclkey_SeedService => ( 'services.user.SeedService', 'services.SeedService');
+use constant fclkey_SeedService => ( 'services.SeedService', 'services.SeedService');
 my $seedServiceKey = ''; # will be determined from the input fcl file
 
 use constant fclkey_TFileServiceFN => 'services.TFileService.fileName';
