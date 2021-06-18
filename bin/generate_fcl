@@ -231,10 +231,10 @@ sub maxSeedFromFHICL {
     # art's RandomNumberGenerator service uses signed long for seed_t,
     # and we want to keep seeds positive.
     use constant mixmax_max_seed => 0x7fffffffffffffff;
-    print "max seed = ", mixmax_max_seed, "\n";
-    # Compute the final result
 
+    # Compute the final result
     my $res = mixmax_max_seed - ($maxUniqueEngines - 1);
+
     return $res;
 }
 
