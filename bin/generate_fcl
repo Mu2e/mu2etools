@@ -10,6 +10,8 @@ use File::Basename;
 use File::Copy;
 use File::Temp qw/tempfile/;
 use English qw( -no_match_vars ) ; # Avoids regex performance penalty
+use warnings;
+no warnings 'portable'; # otherwise complaints about exceeding 32-bit integers
 
 use Mu2eFilename;
 
@@ -29,9 +31,20 @@ use Class::Struct Mu2eAuxInSpec =>
      rsr=>'@'
     ];
 
-my $maxUniqueEngines = 20;
+my $maxSeed = 0;
 
 my $ignoreSource = 0;
+
+#================================================================
+# constant strings used in more than one place
+
+use constant fclkey_randomSeed => 'services.SeedService.baseSeed';
+
+use constant fclkey_TFileServiceFN => 'services.TFileService.fileName';
+use constant fclkey_outModFMT => 'outputs.%s.fileName';
+
+use constant outputfile_owner => 'MU2EGRIDDSOWNER';
+use constant outputfile_conf => 'MU2EGRIDDSCONF';
 
 #================================================================
 sub usage() {
@@ -46,11 +59,11 @@ Usage:
            --run-number=<int> [--first-subrun=<int>] \\
            --events-per-job=<int> --njobs=<int> }\\
          [--ignore-source] \\
+         [--max-seed=<int>] \\
          [--old-seeds=<seeds-file-name>] \\
          [--auxinput=<numFiles>:<fclVarName>:<filelist>] \\
          [--override-outputs] \\
          [--debug-seed=<int>] \\
-         [--max-engines=<int>] \\
          [--verbose] [--help] \\
          {--embed|--include} template-fcl-file
 
@@ -92,14 +105,24 @@ the source module.  This option is meant to be used for special cases,
 such as running a non-art event generator (e.g. CORSIKA) in the same
 grid process as an art job that consumes the generator output.
 
+If this script detects the presence of SeedService in the configuration,
+it will append a line to set a unuque random seed in each generated
+fcl file.  The range of the seeds is computed assuming MixMax RNG,
+and also the policy and maxUniqueEngines settings of the SeedService.
+The only supported policy is 'autoIncrement', and for it the
+seed space is 1 to UINT_MAX-maxUniqueEngines+1, inclusive.
+The --max-seed option can be used to override the max allowed seed
+(thus avoiding any lokups of the policy or maxUniqueEngines parameters).
+Setting --max-seed to 0 disables generation of the seeds.
+
 The --old-seeds option can be used to provide to a text file with a
 list of seeds that should not be used in the current generation.
-If SeedService is defined in the template fcl file, generate_fcl
-writes out a list of all seeds used in the current invocation merged
-with the --old-seeds list, if any.  This output file can be used with
-the --old-seeds option if one decides to add statistics to that fcl
-dataset later; it is necessary to guarantee that each simulation job
-uses a unique random seed.
+If random seeds are generated, generate_fcl writes out a list of all
+seeds used in the current invocation merged with the --old-seeds list,
+if any.  This output file can be used with the --old-seeds option if
+one decides to add statistics to that fcl dataset later; it is
+necessary to guarantee that each simulation job uses a unique random
+seed.
 
 If adding statistics to an existing fcl dataset, remember to specify
 an appropriate --first-subrun in addition to --old-seeds.
@@ -147,18 +170,6 @@ EOF
 }
 
 #================================================================
-# constant strings used in more than one place
-
-use constant fclkey_SeedService => ( 'services.SeedService', 'services.SeedService');
-my $seedServiceKey = ''; # will be determined from the input fcl file
-
-use constant fclkey_TFileServiceFN => 'services.TFileService.fileName';
-use constant fclkey_outModFMT => 'outputs.%s.fileName';
-
-use constant outputfile_owner => 'MU2EGRIDDSOWNER';
-use constant outputfile_conf => 'MU2EGRIDDSCONF';
-
-#================================================================
 sub doubleQuote($) {
     my ($fn) = @_;
     return  '"'.$fn.'"';
@@ -191,30 +202,56 @@ sub addEventID($$$$) {
 
 }
 
+#================================================================
+sub maxSeedFromFHICL {
+    my ($filename) = @_;
+    my @elements = split(/\./, fclkey_randomSeed);
+    pop @elements; # seed name
+    my $ssname = pop @elements;
+    my $tablename = join('.', @elements);
+    my @svclist = `/usr/bin/time fhicl-get --names-in $tablename $filename 2>/dev/null`;
+    chomp @svclist;
+
+    return 0 # SeedService is not defined, disable random numbers
+        unless grep /^$ssname\z/, @svclist;
+
+    # Check that we see a supported configuration
+    my $sskey = $tablename . '.' . $ssname;
+    my $policy = `/usr/bin/time fhicl-get --atom-as string $sskey.policy $filename 2>/dev/null`;
+    chomp $policy;
+    die "Unsupported SeedService policy='$policy'\n"
+        unless $policy eq 'autoIncrement';
+
+    my $maxUniqueEngines = `/usr/bin/time fhicl-get --atom-as string $sskey.maxUniqueEngines $filename 2>/dev/null`;
+    chomp $maxUniqueEngines;
+    die "Can not determine valid maxUniqueEngines for SeedService.  Got: '$maxUniqueEngines'\n"
+        unless $maxUniqueEngines =~ /^\d+\z/ and $maxUniqueEngines > 0;
+
+
+    # art's RandomNumberGenerator service uses signed long for seed_t,
+    # and we want to keep seeds positive.
+    use constant mixmax_max_seed => 0x7fffffffffffffff;
+    print "max seed = ", mixmax_max_seed, "\n";
+    # Compute the final result
+
+    my $res = mixmax_max_seed - ($maxUniqueEngines - 1);
+    return $res;
+}
+
+#================================================================
 sub addRandomSeed($$) {
     my ($fb, $usedSeeds) = @_;
 
-    # art's RandomNumberGenerator_service restrict seeds to
-    # not exceed 900000000.   Not clear if zero seed is OK
-    # so we'll use a positive number up to the max.
-    # Should leave space for SeedService to increment, thus
-    # need to account for maxUniqueEngines.
-    my $seedlimit= 900000000 - $maxUniqueEngines + 1;
-
     my $seed=0;
     while(!$seed) {
-        $seed = int(rand($seedlimit));
+        $seed = 1+int(rand($maxSeed));
         if($$usedSeeds{$seed}) {
             print STDERR "Skipping old seed $seed\n";
             redo;
         }
     }
     $$usedSeeds{$seed} = 1;
-
-    $$fb .=
-        $seedServiceKey . ".policy:  autoIncrement\n".
-        $seedServiceKey . ".maxUniqueEngines: $maxUniqueEngines\n".
-        $seedServiceKey . ".baseSeed: $seed\n";
+    $$fb .= fclkey_randomSeed . ": $seed\n";
 }
 
 #================================================================
@@ -417,7 +454,6 @@ my @auxinputStrSpecs;
 
 my %opt = ('dsowner' =>  $defaultUser,
            'auxinput' => \@auxinputStrSpecs,
-           'max-engines' => \$maxUniqueEngines,
            'ignore-source' => \$ignoreSource,
     );
 
@@ -440,7 +476,7 @@ GetOptions(\%opt,
            'embed',
            'include',
            'debug-seed=i',
-           'max-engines=i',
+           'max-seed=i',
            'help',
            'verbose',
     )
@@ -553,19 +589,16 @@ foreach my $mod (@active_outmods) {
 }
 
 # Determine whether SeedService is present: should we generate random seeds?
-foreach my $ss (fclkey_SeedService) {
-    next unless $ss;
-    my $seedcmd = "/usr/bin/time fhicl-get --names-in $ss $templateresolved 2>/dev/null";
-    my @seedout = `$seedcmd`; chomp @seedout;
-    if(@seedout) {
-        $seedServiceKey = $ss;
-        print "Will use seedServiceKey = $seedServiceKey: got @seedout from the query\n" if $verbose;
-        last;
-    }
-}
+$maxSeed = $opt{'max-seed'} // maxSeedFromFHICL($templateresolved);
+
+# User-specified max-seed may be out of range of unsigned integers, perl would
+# silently convert it to a floating point number.
+die "Integer overlfow in maxSeed = $maxSeed\n" unless $maxSeed =~ /^\d+\z/;
+
+
 
 my %usedSeeds;
-if($seedServiceKey) {
+if($maxSeed) {
     my $inseedfile = $opt{'old-seeds'} // '/dev/null';
 
     open(my $oldseeds, '<', $inseedfile) or die "Error opening input file $inseedfile: $!\n";
@@ -816,7 +849,7 @@ if($ignoreSource or ($srctype eq 'EmptyEvent')) {
         processTemplate(\$fclfb, $templatespec, $embed);
 
         addEventID(\$fclfb, $run, $subrun, $opt{'events-per-job'});
-        addRandomSeed(\$fclfb, \%usedSeeds) if $seedServiceKey;
+        addRandomSeed(\$fclfb, \%usedSeeds) if $maxSeed;
 
         my @fclinkeys;
         push @fclinkeys, addAuxInEpilogs(\$fclfb,\@auxin_specs, \@parents);
@@ -880,7 +913,7 @@ elsif(($srctype eq 'RootInput') or ($srctype eq 'FromCorsikaBinary')) {
 
         processTemplate(\$fclfb, $templatespec, $embed);
 
-        addRandomSeed(\$fclfb, \%usedSeeds) if $seedServiceKey;
+        addRandomSeed(\$fclfb, \%usedSeeds) if $maxSeed;
 
         my @fclinkeys;
 
