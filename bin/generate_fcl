@@ -868,7 +868,10 @@ if($ignoreSource or ($srctype eq 'EmptyEvent')) {
     }
 
 }
-elsif(($srctype eq 'RootInput') or ($srctype eq 'FromCorsikaBinary')) {
+elsif(($srctype eq 'RootInput')
+      or ($srctype eq 'FromCorsikaBinary')
+      or ($srctype eq 'FromSTMTestBeamData')
+    ) {
 
     foreach my $k (@fileInputsArgs) {
         (defined $opt{$k} and $opt{$k} ne '' )
